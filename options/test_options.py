@@ -18,6 +18,7 @@ class TestOptions(BaseOptions):
         # rewrite devalue values
         parser.set_defaults(model='test')
         # To avoid cropping, the load_size should be the same as crop_size
-        parser.set_defaults(load_size=parser.get_default('crop_size'))
+        parser.set_defaults(load_size=parser.get_default('crop_size_A'))
+        parser.set_defaults(load_size=parser.get_default('crop_size_B'))
         self.isTrain = False
         return parser
