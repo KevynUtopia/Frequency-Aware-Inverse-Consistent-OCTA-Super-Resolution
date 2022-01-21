@@ -190,8 +190,8 @@ def save_sample(epoch, tensor, suffix="_real"):
     plt.imsave('./checkpoint_exp/image_alt_'+str(epoch+1)+suffix+'.jpeg', output, cmap="gray")
 
 def eval(model):
-    lr = "./test/6x6_256/"
-    hr = "./test/3x3_256/"
+    lr = "./dataset/test/6x6_256/"
+    hr = "./dataset/test/3x3_256/"
     num, psnr, ssim, mse, nmi= 0, 0, 0, 0, 0
     T_1 = transforms.Compose([ transforms.ToTensor(),
                 transforms.Normalize((0.5), (0.5)),
