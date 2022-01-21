@@ -33,6 +33,8 @@ parser.add_argument('--epoch', type=int, default=0, help='starting epoch')
 parser.add_argument('--n_epochs', type=int, default=50, help='number of epochs of training')
 parser.add_argument('--batchSize', type=int, default=1, help='size of the batches')
 parser.add_argument('--dataroot', type=str, default="./dataset/Colab_random_OCTA_augmented", help='root directory of the dataset')
+parser.add_argument('--pretrained_root', type=str, default="./pre_trained/netG_A2B_pretrained.pth", help='root directory of the pre-trained model')
+parser.add_argument('--pretrained', type=bool, default=False, help='whether use pre-trained model')
 parser.add_argument('--lr', type=float, default=1.3e-4, help='initial learning rate')
 parser.add_argument('--decay_epoch', type=int, default=10, help='epoch to start linearly decaying the learning rate to 0')
 parser.add_argument('--sizeA', type=int, default=128, help='size of the data crop (squared assumed)')
@@ -60,7 +62,11 @@ if torch.cuda.is_available() and not cuda:
 ###### Definition of variables ######
 # Networks
 
+
 netG_A2B = UnetGeneratorA2B(output_nc, input_nc)
+if opt.pretrained:
+    model = torch.load(opt.pretrained_root)
+    netG_A2B.load_state_dict(model, strict=False)
 netG_B2A = UnetGeneratorB2A(output_nc, input_nc)
 netD_A = FS_DiscriminatorA(input_nc)
 netD_B = FS_DiscriminatorB(output_nc)
@@ -71,7 +77,8 @@ if cuda:
     netD_A.cuda()
     netD_B.cuda()
 
-netG_A2B.apply(weights_init_normal)
+if not opt.pretrained:
+    netG_A2B.apply(weights_init_normal)
 netG_B2A.apply(weights_init_normal)
 netD_A.apply(weights_init_normal)
 netD_B.apply(weights_init_normal)
@@ -246,8 +253,13 @@ for epoch in range(epoch, n_epochs):
     lr_scheduler_G.step()
     lr_scheduler_D.step()
 
-    if epoch%5==4:
-      torch.save(netG_A2B.state_dict(), './output_exp/netG_A2B_epoch'+str(epoch+1)+'.pth')
+    
+    if opt.pretrained:
+        if (epoch<opt.decay_epoch and epoch%5==4) or (epoch>=opt.decay_epoch):
+            torch.save(netG_A2B.state_dict(), './output_exp/netG_A2B_epoch'+str(epoch+1)+'.pth')
+    else:
+        if epoch%3==2:
+            torch.save(netG_A2B.state_dict(), './output_exp/netG_A2B_epoch'+str(epoch+1)+'.pth')
     print("Epoch (%d/%d) Finished" % (epoch+1, n_epochs))
     # print('lr_G: ', lr_scheduler_G.get_lr(), ' lr_D: ', lr_scheduler_D.get_lr())
     # _, _, sr_img = netG_A2B(lr_img)
