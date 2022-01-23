@@ -261,16 +261,4 @@ for epoch in range(epoch, n_epochs):
         if epoch%3==2:
             torch.save(netG_A2B.state_dict(), './output_exp/netG_A2B_epoch'+str(epoch+1)+'.pth')
     print("Epoch (%d/%d) Finished" % (epoch+1, n_epochs))
-    # print('lr_G: ', lr_scheduler_G.get_lr(), ' lr_D: ', lr_scheduler_D.get_lr())
-    # _, _, sr_img = netG_A2B(lr_img)
-    
-    # LPIPS = loss_fn_alex(hr_img.cpu(), sr_img.cpu())
-    # hr_img_cpu = hr_img.cpu().detach().numpy().squeeze(0).squeeze(0)
-
-    # yimg = sr_img.cpu().detach().numpy().squeeze(0).squeeze(0)
-    # psnr = skimage.metrics.peak_signal_noise_ratio(yimg, hr_img_cpu)
-    # ssim = skimage.metrics.structural_similarity(yimg, hr_img_cpu)
-    # print(("PSNR: %.4f SSIM: %.4f LPIPS:"%(psnr, ssim)), LPIPS.data)
-
-    # if epoch%3 == 0:
     eval(netG_A2B)

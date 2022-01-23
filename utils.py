@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 import pdb
 import skimage.metrics
 from tqdm import tqdm
+import cv2
 
 def tensor2image(tensor):
     image = 127.5*(tensor[0].cpu().float().numpy() + 1.0)
@@ -220,6 +221,51 @@ def eval(model):
             num += 1
     print(" PSNR: %.4f SSIM: %.4f MSE: %.4f NMI: %.4f"%(psnr/num, ssim/num, mse/num, nmi/num))
 
+
+def eval_6m(model, dataset):
+    n = len(dataset)
+    num, psnr, ssim, mse, nmi= 0, 0, 0, 0, 0
+    for i in range(n):
+        img = dataset[i]['A'].unsqueeze(0).cuda()
+        gt = dataset[i]['B'].unsqueeze(0).cuda()
+
+
+        _, _, y = model(img)
+
+        yimg = y.cpu().detach().numpy().squeeze(0).squeeze(0)
+        
+        # print(gt.shape)
+        # print("fdsafasd fsdaf")
+        gtimg = gt.cpu().detach().numpy().squeeze(0).squeeze(0)
+        psnr += (skimage.metrics.peak_signal_noise_ratio(yimg, gtimg))
+        ssim += (skimage.metrics.structural_similarity(yimg, gtimg))
+        mse += (skimage.metrics.mean_squared_error(yimg, gtimg))
+        nmi += (skimage.metrics.normalized_mutual_information(yimg, gtimg))
+        num += 1
+    print(" PSNR: %.4f SSIM: %.4f MSE: %.4f NMI: %.4f"%(psnr/num, ssim/num, mse/num, nmi/num))
+
+def eval_6m_baseline(model, dataset):
+    n = len(dataset)
+    num, psnr, ssim, mse, nmi= 0, 0, 0, 0, 0
+    for i in range(n):
+        img = dataset[i]['A'].unsqueeze(0).cuda()
+        gt = dataset[i]['B'].unsqueeze(0).cuda()
+
+
+        y = model(img)
+
+        yimg = y.cpu().detach().numpy().squeeze(0).squeeze(0)
+        
+        # print(gt.shape)
+        # print("fdsafasd fsdaf")
+        gtimg = gt.cpu().detach().numpy().squeeze(0).squeeze(0)
+        psnr += (skimage.metrics.peak_signal_noise_ratio(yimg, gtimg))
+        ssim += (skimage.metrics.structural_similarity(yimg, gtimg))
+        mse += (skimage.metrics.mean_squared_error(yimg, gtimg))
+        nmi += (skimage.metrics.normalized_mutual_information(yimg, gtimg))
+        num += 1
+    print(" PSNR: %.4f SSIM: %.4f MSE: %.4f NMI: %.4f"%(psnr/num, ssim/num, mse/num, nmi/num))
+    
 def save_sample(epoch, tensor, suffix="_real"):
     output = tensor.cpu().detach().numpy().squeeze(0).squeeze(0)
     plt.imsave('./checkpoint_exp/image_alt_'+str(epoch+1)+suffix+'.jpeg', output, cmap="gray")
