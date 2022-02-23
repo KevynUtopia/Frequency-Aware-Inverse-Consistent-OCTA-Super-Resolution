@@ -9,10 +9,11 @@ import torchvision.transforms as transforms
 # Dataloader
 class ImageDataset(Dataset):
     def __init__(self, root, transforms_A=None, transforms_B=None, unaligned=False, size_A = 128):
-        transforms_A = transforms_A + [transforms.Resize((size_A*2, size_A*2)), transforms.Normalize((0.5), (0.5))]
         transforms_C = transforms_A + [transforms.Normalize((0.5), (0.5))]
+        transforms_A = transforms_A + [transforms.Resize((size_A*2, size_A*2), interpolation=Image.BICUBIC), transforms.Normalize((0.5), (0.5))]
         self.transformA = transforms.Compose(transforms_A)
         self.transformB = transforms.Compose(transforms_B)
+        self.transformC = transforms.Compose(transforms_C)
 
         self.unaligned = unaligned
 
@@ -36,7 +37,7 @@ class ImageDataset(Dataset):
         return max(len(self.files_A), len(self.files_B))
 
 class ImageDataset_6mm(Dataset):
-    def __init__(self, root, transforms_A=None, transforms_B=None, unaligned=False):
+    def __init__(self, root, transforms_A=None, transforms_B=None, unaligned=False, mode='train'):
         self.transformA = transforms.Compose(transforms_A)
         self.transformB = transforms.Compose(transforms_B)
 

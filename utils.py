@@ -256,9 +256,10 @@ def eval_6m(model, dataset):
         img = dataset[i]['A'].unsqueeze(0).cuda()
         gt = dataset[i]['B'].unsqueeze(0).cuda()
 
-        hf = high_pass(img[0], i=8).unsqueeze(0).unsqueeze(0)
+
+        hf = high_pass(img[0], i=10).unsqueeze(0).unsqueeze(0)
         hf = (hf+img)/2.0
-        lf = low_pass(img[0], i=10).unsqueeze(0).unsqueeze(0)
+        lf = low_pass(img[0], i=8).unsqueeze(0).unsqueeze(0)
         _, _, y = model(lf, hf)
 
         yimg = y.cpu().detach().numpy().squeeze(0).squeeze(0)
@@ -306,8 +307,10 @@ def train_eval(dataset, model):
     x = img.unsqueeze(0).cuda()
     hf = high_pass(x[0], i=10).unsqueeze(0).unsqueeze(0)
     hf = (hf+x)/2.0
+
     lf = low_pass(x[0], i=8).unsqueeze(0).unsqueeze(0)
     _, _, y = model(lf, hf)
+
     yimg = y.cpu().detach().numpy().squeeze(0).squeeze(0)
     psnr = skimage.metrics.peak_signal_noise_ratio(yimg, img.squeeze(0).cpu().detach().numpy(), data_range=2)
     ssim = skimage.metrics.structural_similarity(yimg, img.squeeze(0).cpu().detach().numpy())

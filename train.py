@@ -147,8 +147,8 @@ transforms_A = [
                 
                 # transforms.CenterCrop(size_A),
                 transforms.RandomCrop((size_A, size_A)),
-                transforms.Resize((size_A*2, size_A*2), interpolation=Image.BICUBIC),
-                transforms.Normalize((0.5), (0.5))
+                # transforms.Resize((size_A*2, size_A*2), interpolation=Image.BICUBIC),
+                # transforms.Normalize((0.5), (0.5))
                 ]
                 
 transforms_B = [ 
@@ -183,6 +183,23 @@ dataloader = DataLoader(dataset, batch_size=batchSize, shuffle=True)
 # logger = Logger(n_epochs, len(dataloader))
 ###################################
 
+
+test_path = "./dataset/evalution_6mm/parts"
+transforms_A = [ 
+                transforms.ToTensor(),
+                # transforms.Normalize((0.246), (0.170)),
+                 
+                transforms.CenterCrop(256),
+                transforms.Normalize((0.5), (0.5)),
+                # transforms.Resize((128, 128))
+                ]
+transforms_B = [ 
+                transforms.ToTensor(),
+                # transforms.Normalize((0.246), (0.170)),
+                transforms.Normalize((0.5), (0.5)),
+                transforms.CenterCrop(256)]
+test_dataset = ImageDataset_6mm(test_path, transforms_A=transforms_A, transforms_B=transforms_B, unaligned=False)
+
 ###### Training ######
 for epoch in range(epoch, n_epochs):
     real_out, fake_out = None, None
@@ -192,19 +209,23 @@ for epoch in range(epoch, n_epochs):
         real_B = Variable(input_B.copy_(batch['B']))
 
         ######### (1) forward #########
+
+        ## G A->B##
         hf = utils.high_pass(real_A[0], i=10).unsqueeze(0).unsqueeze(0)
         hf = (hf+real_A)/2.0
         lf = utils.low_pass(real_A[0], i=8).unsqueeze(0).unsqueeze(0)
-        # lf = (lf+real_A)/2.0  
         lf_feature_A, hf_feature_A, fake_B = netG_A2B(lf, hf) # A2B: lf_feature, hf_feature, rc
+
+        ## idt A->A ##
         _, _, idt_A = netG_B2A(hf, lf)
-        # _, _, idt_A = netG_B2A(hf, lf)
-        # lf_feature_A, hf_feature_A, fake_B = netG_A2B(real_A) # A2B: lf_feature, hf_feature, rc
+
 
         hf_feature_A = hf_feature_A.detach()
         hf_feature_A.requires_grad = False
         lf_feature_A = lf_feature_A.detach()
         lf_feature_A.requires_grad = False
+
+        ## G B->A ##
         hf = utils.high_pass(fake_B[0], i=5).unsqueeze(0).unsqueeze(0)
         hf = (hf+fake_B)/2.0
         lf = utils.low_pass(fake_B[0], i=14).unsqueeze(0).unsqueeze(0)
@@ -212,12 +233,13 @@ for epoch in range(epoch, n_epochs):
         hf_feature_recovered_A, lf_feature_recovered_A, recovered_A = netG_B2A(hf, lf) # B2A: hf_feature, lf_feature, rc
         
 
-
+        ## G B->A ##
         hf = utils.high_pass(real_B[0], i=5).unsqueeze(0).unsqueeze(0)
         hf = (hf+real_B)/2.0
         lf = utils.low_pass(real_B[0], i=14).unsqueeze(0).unsqueeze(0)
-        # lf = (lf+real_B)/2.0
         hf_feature_B, lf_feature_B, fake_A = netG_B2A(hf, lf)
+
+        ## idt B->B ##
         _, _, idt_B = netG_A2B(lf, hf)
         # hf_feature_B, lf_feature_B, fake_A = netG_B2A(real_B)
 
@@ -225,10 +247,11 @@ for epoch in range(epoch, n_epochs):
         lf_feature_B.requires_grad = False
         hf_feature_B = hf_feature_B.detach()
         hf_feature_B.requires_grad = False
+
+        ## G A->B ##
         hf = utils.high_pass(fake_A[0], i=10).unsqueeze(0).unsqueeze(0)
         hf = (hf+fake_A)/2.0
         lf = utils.low_pass(fake_A[0], i=8).unsqueeze(0).unsqueeze(0)
-        # lf = (lf+fake_A)/2.0
         lf_feature_recovered_B, hf_feature_recovered_B, recovered_B = netG_A2B(lf, hf)
 
 
@@ -245,15 +268,15 @@ for epoch in range(epoch, n_epochs):
 
 
 
-        loss_cycle_ABA = criterion_cycle(recovered_A, real_A)*8.0 + 0.5*criterion_feature(hf_feature_A, hf_feature_recovered_A) #+ criterion_feature(lf_feature_A, lf_feature_recovered_A) #+ criterion_phase(recovered_A, real_A)
-        loss_cycle_BAB = criterion_cycle(recovered_B, real_B)*8.0 + 2.0*criterion_feature(hf_feature_B, hf_feature_recovered_B) #+ criterion_feature(lf_feature_B, lf_feature_recovered_B) #+ criterion_phase(recovered_B, real_B)
-        loss_idt = criterion_identity(real_A, idt_A)*8.0 +  criterion_identity(real_B, idt_B)*8.0 #+ criterion_phase(recovered_A, real_A) + criterion_phase(recovered_B, real_B)
+        loss_cycle_ABA = criterion_cycle(recovered_A, real_A)*10.0 + 0.5*criterion_feature(hf_feature_A, hf_feature_recovered_A) #+ criterion_feature(lf_feature_A, lf_feature_recovered_A) #+ criterion_phase(recovered_A, real_A)
+        loss_cycle_BAB = criterion_cycle(recovered_B, real_B)*10.0 + 2.0*criterion_feature(hf_feature_B, hf_feature_recovered_B) #+ criterion_feature(lf_feature_B, lf_feature_recovered_B) #+ criterion_phase(recovered_B, real_B)
+        loss_idt = criterion_identity(real_A, idt_A)*2.0 +  criterion_identity(real_B, idt_B)*2.0 #+ criterion_phase(recovered_A, real_A) + criterion_phase(recovered_B, real_B)
         # loss_cycle_ABA = criterion_cycle(recovered_A, real_A)*10 + criterion_feature(hf_feature_A, lf_feature_recovered_A) + criterion_feature(lf_feature_A, hf_feature_recovered_A) #+ criterion_phase(recovered_A, real_A)
         # loss_cycle_BAB = criterion_cycle(recovered_B, real_B)*10 + criterion_feature(hf_feature_B, lf_feature_recovered_B) + criterion_feature(lf_feature_B, hf_feature_recovered_B) #+ criterion_phase(recovered_B, real_B)
         loss_perceptual = criterion_perceptual.get_loss(recovered_A.repeat(1,3,1,1), real_A.repeat(1,3,1,1))
         loss_ssim = (1- criterion_ssim(recovered_A, real_A)) + (1 - criterion_ssim(recovered_B, real_B) )
 
-        loss_G = loss_GAN_A2B + loss_GAN_B2A + loss_cycle_ABA + loss_cycle_BAB + loss_idt #+ loss_perceptual#+ loss_strong_GAN_A2B + loss_strong_GAN_B2A
+        loss_G = loss_GAN_A2B + loss_GAN_B2A + loss_cycle_ABA + loss_cycle_BAB + loss_idt #+ 5e-2*loss_perceptual#+ loss_strong_GAN_A2B + loss_strong_GAN_B2A
 
         loss_G.backward()        
         optimizer_G.step()
@@ -321,4 +344,5 @@ for epoch in range(epoch, n_epochs):
     print("Epoch (%d/%d) Finished" % (epoch+1, n_epochs))
     train_eval(dataset, netG_A2B)
     eval(netG_A2B, epoch=epoch)
-
+    eval_6m(netG_A2B, test_dataset)
+    print("------------------------------------------")

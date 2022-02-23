@@ -70,7 +70,7 @@ class PerceptualLoss():
 class Discriminator(nn.Module):
     """Defines a PatchGAN discriminator"""
 
-    def __init__(self, input_nc=1, ndf=64, n_layers=4, norm_layer=nn.BatchNorm2d):
+    def __init__(self, input_nc=1, ndf=64, n_layers=5, norm_layer=nn.BatchNorm2d):
         """Construct a PatchGAN discriminator
 
         Parameters:
@@ -133,11 +133,6 @@ class FS_DiscriminatorA(nn.Module):
           self.net_dwt = Discriminator(input_nc=1)
         else:
           self.net_dwt = Discriminator(input_nc=3)
-        self.attention = nn.Sequential(
-                nn.AdaptiveAvgPool2d(1),
-                nn.Conv2d(128, 64 , 1, 1),
-                nn.Conv2d(64 , 128, 1, 1),
-                nn.Sigmoid())
         self.out_net = nn.Softmax()
 
     def forward(self, x, y=None):
@@ -149,7 +144,7 @@ class FS_DiscriminatorA(nn.Module):
         dwt_D = self.net_dwt(dwt)
         dwt_D = F.avg_pool2d(dwt_D, dwt_D.size()[2:]).view(x.size()[0], -1)
 
-        return (torch.flatten(0.5*x_D + 0.5*dwt_D))
+        return (torch.flatten(0.7*x_D + 0.3*dwt_D))
 
     def filter_wavelet(self, x, norm=True):
         LL, Hc = self.DWT2(x)
@@ -189,12 +184,6 @@ class FS_DiscriminatorB(nn.Module):
           self.net_dwt = Discriminator(input_nc=1)
         else:
           self.net_dwt = Discriminator(input_nc=3)
-
-        self.attention = nn.Sequential(
-                nn.AdaptiveAvgPool2d(1),
-                nn.Conv2d(128, 64 , 1, 1),
-                nn.Conv2d(64 , 128, 1, 1),
-                nn.Sigmoid())
         self.out_net = nn.Softmax()
 
 
@@ -208,7 +197,7 @@ class FS_DiscriminatorB(nn.Module):
         dwt_D = F.avg_pool2d(dwt_D, dwt_D.size()[2:]).view(x.size()[0], -1)
 
         # return dwt_D
-        return (torch.flatten(0.5*x_D + 0.5*dwt_D))
+        return (torch.flatten(0.7*x_D + 0.3*dwt_D))
 
     def filter_wavelet(self, x, norm=True):
         LL, Hc = self.DWT2(x)
@@ -235,7 +224,8 @@ class NetworkA2B(nn.Module):
                                     nn.ReLU(True),nn.Conv2d(128, 64, kernel_size=3, stride=1, padding=1, bias=use_bias),nn.BatchNorm2d(64)
 
                                       ])
-        self.shallow_up = shallowNet()
+        # self.shallow_frequency = shallowNet(in_dim=1, out_dim=64, up=False)                         
+        self.shallow_up = shallowNet(up=True)
         self.unet_feature = nn.Sequential(*[nn.ReLU(True),
                                         nn.Conv2d(128, 64, kernel_size=3, stride=1, padding=1, bias=use_bias),
                                         nn.BatchNorm2d(64)
@@ -247,12 +237,19 @@ class NetworkA2B(nn.Module):
                                       ])
         self.A2B_input = nn.Sequential(*[nn.Conv2d(1, 64, kernel_size=4, stride=2, padding=1, bias=use_bias)
                                       ])
+        self.resnet = ResnetGenerator(input_nc=64, n_blocks=8)
     
     def forward(self, lf, hf):
         lf_feature = self.shallow_frequency(lf) #64x128^2
         hf_feature_input = self.A2B_input(hf) #64x128^2
-        hf_feature = self.unet_feature(torch.cat([hf_feature_input, self.unet_up(self.unet(hf_feature_input))], 1)) #64*128^2
+        # hf_feature = self.unet_feature(torch.cat([hf_feature_input, self.unet_up(self.unet(hf_feature_input))], 1)) #64*128^2
+        # hf_feature = self.resnet(hf_feature_input)
+        # A, B = hf_feature_input, self.resnet(hf_feature_input)
+        # print(A.size(), B.size())
+        # print(hf_feature_input.size())
+        hf_feature = self.unet_feature(torch.cat([hf_feature_input, self.resnet(hf_feature_input)], 1)) #64*256^2
         # return None, None, feature_map
+        # print(lf_feature.size(), hf_feature.size())
         return lf_feature, hf_feature, self.shallow_up(torch.cat([lf_feature, hf_feature], 1))
 
 
@@ -265,16 +262,22 @@ class NetworkB2A(nn.Module):
                                     nn.ReLU(True),nn.Conv2d(128, 64, kernel_size=3, stride=1, padding=1, bias=use_bias),nn.BatchNorm2d(64)
 
                                       ])
-        self.shallow_up = shallowNet()
+        self.shallow_up = shallowNet(up=True)
         self.unet_feature = nn.Sequential(*[nn.ReLU(True),
                                         nn.Conv2d(128, 64, kernel_size=3, stride=1, padding=1, bias=use_bias),
                                         nn.BatchNorm2d(64)
                                       ])
+        self.resnet = ResnetGenerator(input_nc=128, n_blocks=8)
+        self.B2A_input = nn.Sequential(*[nn.Conv2d(1, 128, kernel_size=4, stride=2, padding=1, bias=use_bias)
+                                      ])
+
     
     def forward(self, hf, lf):
-        hf_feature = self.shallow_frequency(hf) #64x128^2
-        feature_map = self.unet(lf) #128x128^2
-        lf_feature = self.unet_feature(feature_map) #64*128^2
+        hf_feature = self.shallow_frequency(hf) #64x256^2
+        # feature_map = self.unet(lf) #128x128^2
+        # print(lf.size())
+        lf_feature = self.resnet(self.B2A_input(lf)) #64x256^2
+        # lf_feature = self.unet_feature(feature_map) #64*128^2
         
 
         # return None, None, feature_map
@@ -381,97 +384,7 @@ class UnetSkipConnectionBlock(nn.Module):
             return out
         else:   # add skip connections
             return torch.cat([x, self.model(x)], 1)
-# class UnetGenerator(nn.Module):
-#     def __init__(self, input_nc, output_nc, num_downs=5, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False):
-#         super(UnetGenerator, self).__init__()
 
-#         ####################### UNet #########################
-#         ######################################################
-#         use_bias = False
-#         # (1, 256) -> (64, 128)
-#         self.down_1 = nn.Sequential(*[nn.Conv2d(1, 64, kernel_size=4, stride=2, padding=1, bias=use_bias)])
-#         # (64, 128) -> (128, 64)
-#         self.down_2 = nn.Sequential(*[nn.LeakyReLU(0.2, True),
-#                                       nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                       nn.BatchNorm2d(128)])
-#         # (128, 64) -> (256, 32)
-#         self.down_3 = nn.Sequential(*[nn.LeakyReLU(0.2, True),
-#                                       nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                       nn.BatchNorm2d(256)])
-#         # (256, 32) -> (512, 16)
-#         self.down_4 = nn.Sequential(*[nn.LeakyReLU(0.2, True),
-#                                       nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                       nn.BatchNorm2d(512)])
-#         # (512, 16) -> (1024, 8)
-#         self.down_5 = nn.Sequential(*[nn.LeakyReLU(0.2, True),
-#                                       nn.Conv2d(512, 1024, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                       nn.BatchNorm2d(1024)])
-
-#         # (1024, 8) -> (1024, 4)
-#         self.down_6 = nn.Sequential(*[nn.LeakyReLU(0.2, True),
-#                                       nn.Conv2d(1024, 1024, kernel_size=4, stride=2, padding=1, bias=use_bias)])
-        
-#         ######################################################
-#         # (1024, 4) -> (1024, 8)
-#         self.up_6 = nn.Sequential(*[nn.ReLU(True), 
-#                                     nn.ConvTranspose2d(1024, 1024, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                     nn.BatchNorm2d(1024)])
-#         # (1024, 8)*2 -> (512, 16)
-#         self.up_5 = nn.Sequential(*[nn.ReLU(True), 
-#                                     nn.ConvTranspose2d(2048, 512, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                     nn.BatchNorm2d(512)])
-#         # (512, 16)*2 -> (256, 32)
-#         self.up_4 = nn.Sequential(*[nn.ReLU(True), 
-#                                     nn.ConvTranspose2d(1024, 256, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                     nn.BatchNorm2d(256)])
-        
-#         # (256, 32)*2 -> (128, 64)
-#         self.up_3 = nn.Sequential(*[nn.ReLU(True), 
-#                                     nn.ConvTranspose2d(512, 128, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                     nn.BatchNorm2d(128)])
-#         # (128, 64)*2 -> (64, 128)
-#         self.up_2 = nn.Sequential(*[nn.ReLU(True), 
-#                                     nn.ConvTranspose2d(256, 64, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                     nn.BatchNorm2d(64)])
-
-#         # (64, 128)*2 -> (32, 256)
-#         self.up_1 = nn.Sequential(*[nn.ReLU(True), 
-#                                     nn.ConvTranspose2d(128, 32, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                     nn.BatchNorm2d(32)])
-
-#         ######################################################
-#         ######################################################
-#         self.shallow_input = nn.Sequential(*[nn.Conv2d(1, 64, kernel_size=4, stride=2, padding=1, bias=use_bias)])
-#         self.shallow_frequency = nn.Sequential(*[nn.Conv2d(32, 32, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                       nn.BatchNorm2d(32),
-#                                       nn.ReLU(True), 
-#                                       nn.ConvTranspose2d(32, 32, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                       nn.BatchNorm2d(32)]
-#                                       )
-#         self.shallow_up = shallowNet(A2B=False)
-
-#     def forward(self, A, B):
-#         """Standard forward"""
-
-#         # input = self.shallow_input(A) # (32, 256)
-#         # input_compnent = self.shallow_frequency(input)# (32, 256)
-#         input_compnent = self.shallow_input(A)# (64, 128)
-#         down_1 = self.down_1(B) # (64, 128)
-#         down_2 = self.down_2(down_1) # (128, 64)
-#         down_3 = self.down_3(down_2) # (256, 32)
-#         down_4 = self.down_4(down_3) # (512, 16)
-#         down_5 = self.down_5(down_4) # (1024, 8)
-#         down_6 = self.down_6(down_5) # (1024, 4)
-
-#         up_6 = self.up_6(down_6) # (1024, 8)
-#         up_5 = self.up_5(torch.cat([down_5, up_6], 1)) # (512, 16)
-#         up_4 = self.up_4(torch.cat([down_4, up_5], 1)) # (256, 32)
-#         up_3 = self.up_3(torch.cat([down_3, up_4], 1)) # (128, 64)
-#         up_2 = self.up_2(torch.cat([down_2, up_3], 1)) # (64, 128)
-#         # up_1 = self.up_1(torch.cat([down_1, up_2], 1)) # (32, 256)
-
-        
-#         return input_compnent, up_2, self.shallow_up(torch.cat([up_2, input_compnent], 1))
 
 class ResnetBlock(nn.Module):
     """Define a Resnet block"""
@@ -494,200 +407,86 @@ class ResnetBlock(nn.Module):
         return out
 
 class shallowNet(nn.Module):
-    def __init__(self):
+    def __init__(self, in_dim = 128, out_dim=1, up=False):
         super(shallowNet, self).__init__()
         # if A2B:
         #       model = [nn.ReLU(True), nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1, bias=False), nn.BatchNorm2d(64)]
         # else:
         #   model = [nn.ReLU(True), nn.Conv2d(64, 32, kernel_size=3, stride=1, padding=1, bias=False), nn.BatchNorm2d(64)]
-        model = [nn.ReLU(True), nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1, bias=False), nn.BatchNorm2d(64)]
+        if up:
+            model = [nn.ReLU(True), nn.ConvTranspose2d(in_dim, 64, kernel_size=4, stride=2, padding=1, bias=False), nn.BatchNorm2d(64)]
+        else:
+            model = [nn.ReLU(True), nn.Conv2d(in_dim, 64, kernel_size=3, stride=1, padding=1, bias=False), nn.BatchNorm2d(64)]
+        model += [ResnetBlock()]
+        model += [ResnetBlock()]
         model += [ResnetBlock()]
         # model += [ResnetBlock()]
-        # model += [ResnetBlock()]
-        # model += [ResnetBlock()]
-        model += [nn.ReLU(True), nn.Conv2d(64, 1, kernel_size=3, stride=1, padding=1, bias=False), nn.Tanh()]
+        model += [nn.ReLU(True), nn.Conv2d(64, out_dim, kernel_size=3, stride=1, padding=1, bias=False), nn.Tanh()]
         self.model = nn.Sequential(*model)
     
     def forward(self, x):
         return self.model(x)
     
+class ResnetGenerator(nn.Module):
+    def __init__(self, input_nc=64, output_nc=64, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=8, padding_type='reflect'):
+        assert(n_blocks >= 0)
+        super(ResnetGenerator, self).__init__()
+        use_bias = norm_layer == nn.InstanceNorm2d
 
-# class UnetGeneratorB2A(nn.Module):
-#     def __init__(self, input_nc, output_nc, num_downs=5, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False):
-#         super(UnetGeneratorB2A, self).__init__()
+        model = [nn.ReflectionPad2d(3),
+                 nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0, bias=use_bias),
+                 norm_layer(ngf),
+                 nn.ReLU(True)]
 
-#         ####################### UNet #######################
-#         ######################################################
-#         use_bias = False
-#         # (1, 320) -> (64, 160)
-#         self.down_1 = nn.Sequential(*[nn.Conv2d(1, 64, kernel_size=4, stride=2, padding=1, bias=use_bias)])
-#         # (64, 160) -> (128, 80)
-#         self.down_2 = nn.Sequential(*[nn.LeakyReLU(0.2, True),
-#                                       nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                       nn.BatchNorm2d(128)])
-#         # (128, 80) -> (256, 40)
-#         self.down_3 = nn.Sequential(*[nn.LeakyReLU(0.2, True),
-#                                       nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                       nn.BatchNorm2d(256)])
-#         # (256, 40) -> (512, 20)
-#         self.down_4 = nn.Sequential(*[nn.LeakyReLU(0.2, True),
-#                                       nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                       nn.BatchNorm2d(512)])
-#         # (512, 20) -> (1024, 10)
-#         self.down_5 = nn.Sequential(*[nn.LeakyReLU(0.2, True),
-#                                       nn.Conv2d(512, 1024, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                       nn.BatchNorm2d(1024)])
+        n_downsampling = 2
+        for i in range(n_downsampling):  # add downsampling layers
+            mult = 2 ** i
+            model += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=2, padding=1, bias=use_bias),
+                      norm_layer(ngf * mult * 2),
+                      nn.ReLU(True)]
 
-#         # (1024, 10) -> (1024, 5)
-#         self.down_6 = nn.Sequential(*[nn.LeakyReLU(0.2, True),
-#                                       nn.Conv2d(1024, 1024, kernel_size=4, stride=2, padding=1, bias=use_bias)])
-        
-#         ######################################################
-#         # (1024, 5) -> (1024, 10)
-#         self.up_6 = nn.Sequential(*[nn.ReLU(True), 
-#                                     nn.ConvTranspose2d(1024, 1024, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                     nn.BatchNorm2d(1024)])
-#         # (1024, 10)*2 -> (512, 20)
-#         self.up_5 = nn.Sequential(*[nn.ReLU(True), 
-#                                     nn.ConvTranspose2d(2048, 512, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                     nn.BatchNorm2d(512)])
-#         # (512, 20)*2 -> (256, 40)
-#         self.up_4 = nn.Sequential(*[nn.ReLU(True), 
-#                                     nn.ConvTranspose2d(1024, 256, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                     nn.BatchNorm2d(256)])
-        
-#         # (256, 40)*2 -> (128, 80)
-#         self.up_3 = nn.Sequential(*[nn.ReLU(True), 
-#                                     nn.ConvTranspose2d(512, 128, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                     nn.BatchNorm2d(128)])
-#         # (128, 80)*2 -> (64, 160)
-#         self.up_2 = nn.Sequential(*[nn.ReLU(True), 
-#                                     nn.ConvTranspose2d(256, 64, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                     nn.BatchNorm2d(64)])
+        mult = 2 ** n_downsampling
+        for i in range(n_blocks):       # add ResNet blocks
 
-#         ######################################################
-#         ######################################################
-#         self.shallow_frequency = nn.Sequential(*[nn.Conv2d(1, 64, kernel_size=3, stride=1, padding=1, bias=use_bias),
-#                                       nn.LeakyReLU(0.2, True),
-#                                       nn.Conv2d(64, 64, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                       nn.BatchNorm2d(64)])
-        
-#         # self.shallow = nn.Sequential(*[nn.ReLU(True), 
-#         #                             nn.Conv2d(64, 1, kernel_size=3, stride=1, padding=1, bias=use_bias),
-#         #                             nn.Tanh()])
-#         self.shallow = shallowNet(A2B=False)
+            model += [ResidualBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
 
-#     def forward(self, lf, hf):
-#         """Standard forward"""
-#         # hf = high_pass(input[0], i=5).unsqueeze(lf0).unsqueeze(0) # (1, 320) 5
-#         # hf = (hf+input)/2.0
-#         # lf = low_pass(input[0], i=14).unsqueeze(0).unsqueeze(0) # (1, 320) 14
+        for i in range(n_downsampling):  # add upsampling layers
+            mult = 2 ** (n_downsampling - i)
+            model += [nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2), kernel_size=3, stride=2, padding=1, output_padding=1, bias=use_bias),
+                      norm_layer(int(ngf * mult / 2)),
+                      nn.ReLU(True)]
+        model += [nn.ReflectionPad2d(3)]
+        model += [nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0)]
+        # model += [nn.Tanh()]
 
-#         hf_input = self.shallow_frequency(lf) # (64, 160)
+        self.model = nn.Sequential(*model)
 
-#         down_1 = self.down_1(hf) # (64, 160)
-#         down_2 = self.down_2(down_1) # (128, 80)
-#         down_3 = self.down_3(down_2) # (256, 40)
-#         down_4 = self.down_4(down_3) # (512, 20)
-#         down_5 = self.down_5(down_4) # (1024, 10)
-#         down_6 = self.down_6(down_5) # (1024, 5)
+    def forward(self, input):
+        """Standard forward"""
+        return self.model(input)
 
-#         up_6 = self.up_6(down_6) # (1024, 10)
-#         up_5 = self.up_5(torch.cat([down_5, up_6], 1)) # (512, 20)
-#         up_4 = self.up_4(torch.cat([down_4, up_5], 1)) # (256, 40)
-#         up_3 = self.up_3(torch.cat([down_3, up_4], 1)) # (128, 80)
-#         up_2 = self.up_2(torch.cat([down_2, up_3], 1)) # (64, 160)
 
-        
-#         return hf_input, up_2, self.shallow(torch.cat([up_2, hf_input], 1)) # B2A: hf_feature, lf_feature, rc
-#         # return hf_input, up_2, self.shallow(up_2+hf_input) # B2A: hf_feature, lf_feature, rc
+class ResidualBlock(nn.Module):
+    """Define a Resnet block"""
 
-# class UnetGeneratorA2B(nn.Module):
-#     def __init__(self, input_nc, output_nc, num_downs=5, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False):
-#         super(UnetGeneratorA2B, self).__init__()
+    def __init__(self, dim, padding_type, norm_layer, use_dropout, use_bias):
+        super(ResidualBlock, self).__init__()
+        self.conv_block = self.build_conv_block(dim, norm_layer, use_dropout, use_bias)
 
-#         ####################### UNet #######################
-#         ######################################################
-#         use_bias = False
-#         # # (1, 320) -> (64, 160)
-#         # self.down_1 = nn.Sequential(*[nn.Conv2d(1, 64, kernel_size=4, stride=2, padding=1, bias=True)])
-#         # (64, 160) -> (128, 80)
-#         self.down_1 = nn.Sequential(*[nn.LeakyReLU(0.2, True),
-#                                       nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                       nn.BatchNorm2d(128)])
-#         # (128, 80) -> (256, 40)
-#         self.down_2 = nn.Sequential(*[nn.LeakyReLU(0.2, True),
-#                                       nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                       nn.BatchNorm2d(256)])
-#         # (256, 40) -> (512, 20)
-#         self.down_3 = nn.Sequential(*[nn.LeakyReLU(0.2, True),
-#                                       nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                       nn.BatchNorm2d(512)])
-#         # (512, 20) -> (1024, 10)
-#         self.down_4 = nn.Sequential(*[nn.LeakyReLU(0.2, True),
-#                                       nn.Conv2d(512, 1024, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                       nn.BatchNorm2d(1024)])
+    def build_conv_block(self, dim, norm_layer, use_dropout, use_bias):
+        conv_block = []
+        p = 1
 
-#         # (1024, 10) -> (1024, 5)
-#         self.down_5 = nn.Sequential(*[nn.LeakyReLU(0.2, True),
-#                                       nn.Conv2d(1024, 1024, kernel_size=4, stride=2, padding=1, bias=use_bias)])
-        
-#         ######################################################
-#         # (1024, 5) -> (1024, 10)
-#         self.up_5 = nn.Sequential(*[nn.ReLU(True), 
-#                                     nn.ConvTranspose2d(1024, 1024, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                     nn.BatchNorm2d(1024)])
-#         # (1024, 10)*2 -> (512, 20)
-#         self.up_4 = nn.Sequential(*[nn.ReLU(True), 
-#                                     nn.ConvTranspose2d(2048, 512, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                     nn.BatchNorm2d(512)])
-#         # (512, 20)*2 -> (256, 40)
-#         self.up_3 = nn.Sequential(*[nn.ReLU(True), 
-#                                     nn.ConvTranspose2d(1024, 256, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                     nn.BatchNorm2d(256)])
-        
-#         # (256, 40)*2 -> (128, 80)
-#         self.up_2 = nn.Sequential(*[nn.ReLU(True), 
-#                                     nn.ConvTranspose2d(512, 128, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                     nn.BatchNorm2d(128)])
-#         # (128, 80)*2 -> (64, 160)
-#         self.up_1 = nn.Sequential(*[nn.ReLU(True), 
-#                                     nn.ConvTranspose2d(256, 64, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#                                     nn.BatchNorm2d(64)])
+        conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias), norm_layer(dim), nn.ReLU(True)]
+        if use_dropout:
+            conv_block += [nn.Dropout(0.5)]
 
-#         ######################################################
-#         ######################################################
+        p = 1
+        conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias), norm_layer(dim)]
 
-#         self.shallow_frequency = nn.Sequential(*[nn.Conv2d(1, 64, kernel_size=3, stride=1, padding=1, bias=use_bias),
-#                                       nn.LeakyReLU(0.2, True),
-#                                       nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1, bias=use_bias),
-#                                       nn.BatchNorm2d(64)])
-        
-#         # self.shallow = nn.Sequential(*[nn.ReLU(True), 
-#         #                             nn.ConvTranspose2d(64, 1, kernel_size=4, stride=2, padding=1, bias=use_bias),
-#         #                             nn.Tanh()])
-#         self.shallow = shallowNet(A2B=True)
+        return nn.Sequential(*conv_block)
 
-#     def forward(self, lf, hf):
-#         """Standard forward"""
-#         # hf = high_pass(input[0], i=10).unsqueeze(0).unsqueeze(0) # (1, 320) (10 adamw) 16.22 # (gtimg+hp_lr_img)/2.0
-#         # hf = (hf+input)/2.0
-#         # lf = low_pass(input[0], i=8).unsqueeze(0).unsqueeze(0) # (1, 320) (8 adamw)
-
-#         lf_input = self.shallow_frequency(lf)
-
-#         hf_input = self.shallow_frequency(hf)# (64, 160)
-#         down_1 = self.down_1(hf_input) # (128, 80)
-#         down_2 = self.down_2(down_1) # (256, 40)
-#         down_3 = self.down_3(down_2) # (512, 20)
-#         down_4 = self.down_4(down_3) # (1024, 10)
-#         down_5 = self.down_5(down_4) # (1024, 5)
-
-#         up_5 = self.up_5(down_5) # (1024, 10)
-#         up_4 = self.up_4(torch.cat([down_4, up_5], 1)) # (512, 20)
-#         up_3 = self.up_3(torch.cat([down_3, up_4], 1)) # (256, 40)
-#         up_2 = self.up_2(torch.cat([down_2, up_3], 1)) # (128, 80)
-#         up_1 = self.up_1(torch.cat([down_1, up_2], 1)) # (64, 160)
-
-#         return lf_input, hf_input, self.shallow(torch.cat([up_1, lf_input], 1)) # A2B: lf_feature, hf_feature, rc
-#         # return lf_input, hf_input, self.shallow(up_1+lf_input) # A2B: lf_feature, hf_feature, rc
+    def forward(self, x):
+        """Forward function (with skip connections)"""
+        out = x + self.conv_block(x)  # add skip connections
+        return out
