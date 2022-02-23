@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 import pdb
 import skimage.metrics
 from tqdm import tqdm
+import cv2
 
 def tensor2image(tensor):
     image = 127.5*(tensor[0].cpu().float().numpy() + 1.0)
@@ -71,7 +72,7 @@ def guais_low_pass(img, radius=10):
     rows, cols = img.shape
     center = int(rows / 2), int(cols / 2)
 
-    mask = np.zeros((rows, cols))
+    mask = np.zeros((rows, cols), dtype = complex)
     for i in range(rows):
         for j in range(cols):
             distance_u_v = (i - center[0]) ** 2 + (j - center[1]) ** 2
@@ -82,7 +83,7 @@ def guais_high_pass(img, radius=10):
     rows, cols = img.shape
     center = int(rows / 2), int(cols / 2)
 
-    mask = np.zeros((rows, cols))
+    mask = np.zeros((rows, cols), dtype = complex)
     for i in range(rows):
         for j in range(cols):
             distance_u_v = (i - center[0]) ** 2 + (j - center[1]) ** 2
@@ -189,13 +190,15 @@ def save_sample(epoch, tensor, suffix="_real"):
     output = tensor.cpu().detach().numpy().squeeze(0).squeeze(0)
     plt.imsave('./checkpoint_exp/image_alt_'+str(epoch+1)+suffix+'.jpeg', output, cmap="gray")
 
-def eval(model):
-    lr = "./test/6x6_256/"
-    hr = "./test/3x3_256/"
+def eval(model, epoch=0):
+    # lr = "./dataset/OCTA_new/6mm_CROPPED/"
+    # hr = "./dataset/OCTA_new/3mm_CROPPED/"
+    lr = "./dataset/test/6x6_256/"
+    hr = "./dataset/test/3x3_256/"
     num, psnr, ssim, mse, nmi= 0, 0, 0, 0, 0
     T_1 = transforms.Compose([ transforms.ToTensor(),
                 transforms.Normalize((0.5), (0.5)),
-                transforms.Resize([128, 128])
+                # transforms.Resize([128, 128])
                  ])
     T_2 = transforms.Compose([ transforms.ToTensor(),                         
                   transforms.Normalize((0.5), (0.5))])
@@ -209,17 +212,107 @@ def eval(model):
             lr_img = T_1(lr_img).cuda().unsqueeze(0)
             hr_img = T_2(hr_img).cuda().unsqueeze(0)
             
-            _, _, sr_img = model(lr_img)
+            hf = high_pass(lr_img[0], i=10).unsqueeze(0).unsqueeze(0)
+            hf = (hf+lr_img)/2.0
+            lf = low_pass(lr_img[0], i=8).unsqueeze(0).unsqueeze(0)
+            _, _, sr_img = model(lf, hf)
 
             yimg = sr_img.cpu().detach().numpy().squeeze(0).squeeze(0)
             gtimg = hr_img.cpu().detach().numpy().squeeze(0).squeeze(0)
-            psnr += (skimage.metrics.peak_signal_noise_ratio(yimg, gtimg))
+            psnr += (skimage.metrics.peak_signal_noise_ratio(yimg, gtimg, data_range=2))
             ssim += (skimage.metrics.structural_similarity(yimg, gtimg))
             mse += (skimage.metrics.mean_squared_error(yimg, gtimg))
             nmi += (skimage.metrics.normalized_mutual_information(yimg, gtimg))
             num += 1
     print(" PSNR: %.4f SSIM: %.4f MSE: %.4f NMI: %.4f"%(psnr/num, ssim/num, mse/num, nmi/num))
+    
+    i = random.randint(0, 296)
+    lr_path = os.path.join(lr, str(i)+"_3.png")
+    hr_path = os.path.join(hr, str(i)+"_6.png")
+    while not os.path.isfile(lr_path) or not os.path.isfile(hr_path):
+        i = random.randint(0, 296)
+        lr_path = os.path.join(lr, str(i)+"_3.png")
+        hr_path = os.path.join(hr, str(i)+"_6.png")
+    lr_img = Image.open(lr_path).convert('L')
+    hr_img = Image.open(hr_path).convert('L')
+    
+    lr_img = T_1(lr_img).cuda().unsqueeze(0)
+    hr_img = T_2(hr_img).cuda().unsqueeze(0)
+    
+    hf = high_pass(lr_img[0], i=10).unsqueeze(0).unsqueeze(0)
+    hf = (hf+lr_img)/2.0
+    lf = low_pass(lr_img[0], i=8).unsqueeze(0).unsqueeze(0)
+    _, _, sr_img = model(lf, hf)
 
+    save_sample(epoch, lr_img, "_eval_input")
+    save_sample(epoch, sr_img, "_eval_output")
+    
+
+
+def eval_6m(model, dataset):
+    n = len(dataset)
+    num, psnr, ssim, mse, nmi= 0, 0, 0, 0, 0
+    for i in range(n):
+        img = dataset[i]['A'].unsqueeze(0).cuda()
+        gt = dataset[i]['B'].unsqueeze(0).cuda()
+
+
+        hf = high_pass(img[0], i=10).unsqueeze(0).unsqueeze(0)
+        hf = (hf+img)/2.0
+        lf = low_pass(img[0], i=8).unsqueeze(0).unsqueeze(0)
+        _, _, y = model(lf, hf)
+
+        yimg = y.cpu().detach().numpy().squeeze(0).squeeze(0)
+        
+        # print(gt.shape)
+        # print("fdsafasd fsdaf")
+        gtimg = gt.cpu().detach().numpy().squeeze(0).squeeze(0)
+        psnr += (skimage.metrics.peak_signal_noise_ratio(yimg, gtimg))
+        ssim += (skimage.metrics.structural_similarity(yimg, gtimg))
+        mse += (skimage.metrics.mean_squared_error(yimg, gtimg))
+        nmi += (skimage.metrics.normalized_mutual_information(yimg, gtimg))
+        num += 1
+    print(" PSNR: %.4f SSIM: %.4f MSE: %.4f NMI: %.4f"%(psnr/num, ssim/num, mse/num, nmi/num))
+
+def eval_6m_baseline(model, dataset):
+    n = len(dataset)
+    num, psnr, ssim, mse, nmi= 0, 0, 0, 0, 0
+    for i in range(n):
+        img = dataset[i]['A'].unsqueeze(0).cuda()
+        gt = dataset[i]['B'].unsqueeze(0).cuda()
+
+
+        y = model(img)
+
+        yimg = y.cpu().detach().numpy().squeeze(0).squeeze(0)
+        
+        # print(gt.shape)
+        # print("fdsafasd fsdaf")
+        gtimg = gt.cpu().detach().numpy().squeeze(0).squeeze(0)
+        psnr += (skimage.metrics.peak_signal_noise_ratio(yimg, gtimg))
+        ssim += (skimage.metrics.structural_similarity(yimg, gtimg))
+        mse += (skimage.metrics.mean_squared_error(yimg, gtimg))
+        nmi += (skimage.metrics.normalized_mutual_information(yimg, gtimg))
+        num += 1
+    print(" PSNR: %.4f SSIM: %.4f MSE: %.4f NMI: %.4f"%(psnr/num, ssim/num, mse/num, nmi/num))
+    
 def save_sample(epoch, tensor, suffix="_real"):
     output = tensor.cpu().detach().numpy().squeeze(0).squeeze(0)
     plt.imsave('./checkpoint_exp/image_alt_'+str(epoch+1)+suffix+'.jpeg', output, cmap="gray")
+
+
+def train_eval(dataset, model):
+    i = random.randint(0, len(dataset) - 1)
+    img = dataset[i]['A']
+    x = img.unsqueeze(0).cuda()
+    hf = high_pass(x[0], i=10).unsqueeze(0).unsqueeze(0)
+    hf = (hf+x)/2.0
+
+    lf = low_pass(x[0], i=8).unsqueeze(0).unsqueeze(0)
+    _, _, y = model(lf, hf)
+
+    yimg = y.cpu().detach().numpy().squeeze(0).squeeze(0)
+    psnr = skimage.metrics.peak_signal_noise_ratio(yimg, img.squeeze(0).cpu().detach().numpy(), data_range=2)
+    ssim = skimage.metrics.structural_similarity(yimg, img.squeeze(0).cpu().detach().numpy())
+    nmi = skimage.metrics.mean_squared_error(yimg, img.squeeze(0).cpu().detach().numpy())
+    print("traning PSNR: %.4f SSIM: %.4f NMI: %.4f"%(psnr, ssim, nmi))

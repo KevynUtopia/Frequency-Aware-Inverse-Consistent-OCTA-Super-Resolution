@@ -6,6 +6,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
 import numpy as np
+from utils import high_pass, low_pass
 
 class ResnetGenerator(nn.Module):
     """Resnet-based generator that consists of Resnet blocks between a few downsampling/upsampling operations.
@@ -62,6 +63,8 @@ class ResnetGenerator(nn.Module):
 
     def forward(self, input):
         """Standard forward"""
+        # hf = high_pass(input[0], i=5).unsqueeze(0).unsqueeze(0) # (1, 320) 5
+        # input = (hf+input)/2.0
         return self.model(input)
 
 
@@ -153,6 +156,8 @@ class UnetGenerator(nn.Module):
 
     def forward(self, input):
         """Standard forward"""
+        # hf = high_pass(input[0], i=5).unsqueeze(0).unsqueeze(0) # (1, 320) 5
+        # input = (hf+input)/2.0
         return self.model(input)
 
 

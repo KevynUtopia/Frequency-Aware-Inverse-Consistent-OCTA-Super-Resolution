@@ -8,9 +8,12 @@ import torchvision.transforms as transforms
 
 # Dataloader
 class ImageDataset(Dataset):
-    def __init__(self, root, transforms_A=None, transforms_B=None, unaligned=False, mode='train'):
+    def __init__(self, root, transforms_A=None, transforms_B=None, unaligned=False, size_A = 128):
+        transforms_C = transforms_A + [transforms.Normalize((0.5), (0.5))]
+        transforms_A = transforms_A + [transforms.Resize((size_A*2, size_A*2), interpolation=Image.BICUBIC), transforms.Normalize((0.5), (0.5))]
         self.transformA = transforms.Compose(transforms_A)
         self.transformB = transforms.Compose(transforms_B)
+        self.transformC = transforms.Compose(transforms_C)
 
         self.unaligned = unaligned
 
@@ -26,7 +29,33 @@ class ImageDataset(Dataset):
         else:
             item_B = self.transformB(Image.open(self.files_B[index % len(self.files_B)]).convert('L'))
 
-        return {'A': item_A, 'B': item_B}
+        item_C = self.transformC(img_A)
+
+        return {'A': item_A, 'B': item_B, 'C': item_C}
 
     def __len__(self):
         return max(len(self.files_A), len(self.files_B))
+
+class ImageDataset_6mm(Dataset):
+    def __init__(self, root, transforms_A=None, transforms_B=None, unaligned=False, mode='train'):
+        self.transformA = transforms.Compose(transforms_A)
+        self.transformB = transforms.Compose(transforms_B)
+
+        self.unaligned = unaligned
+
+        self.files_A = sorted(glob.glob(os.path.join(root, 'LR') + '/*.*'))
+        # self.files_B = sorted(glob.glob(root + '/*.*'))
+
+    def __getitem__(self, index):
+        path_A = self.files_A[index % len(self.files_A)]
+
+        path_B = path_A
+        path_B = path_B.replace("_lr.", "_hr.").replace("LR", "HR")
+
+        item_A = self.transformA(Image.open(path_A).convert('L'))
+        item_B = self.transformB(Image.open(path_B).convert('L'))
+
+        return {'A': item_A, 'B': item_B}
+
+    def __len__(self):
+        return len(self.files_A)
