@@ -25,7 +25,7 @@ warnings.filterwarnings('ignore')
 
 import utils
 from utils import set_requires_grad, weights_init_normal, ReplayBuffer, LambdaLR, save_sample, eval, eval_6m, train_eval
-from model import UnetGenerator, FS_DiscriminatorA, FS_DiscriminatorB, phase_consistency_loss, NetworkA2B, NetworkB2A, PerceptualLoss
+from model import UnetGenerator, FS_DiscriminatorA, FS_DiscriminatorB, phase_consistency_loss, NetworkA2B, NetworkB2A, PerceptualLoss, TVLoss
 from dataset import ImageDataset, ImageDataset_6mm
 import ssim
 
@@ -98,6 +98,7 @@ criterion_identity = torch.nn.L1Loss()
 
 criterion_perceptual = PerceptualLoss(torch.nn.MSELoss())
 criterion_ssim = ssim.SSIM()
+criterion_ssim_TV_loss= TVLoss().cuda()
 
 criterion_feature = torch.nn.BCEWithLogitsLoss()
 # criterion_feature = torch.nn.KLDivLoss(size_average=False)
@@ -147,8 +148,8 @@ transforms_A = [
                 
                 # transforms.CenterCrop(size_A),
                 transforms.RandomCrop((size_A, size_A)),
-                # transforms.Resize((size_A*2, size_A*2), interpolation=Image.BICUBIC),
-                # transforms.Normalize((0.5), (0.5))
+                transforms.Resize((size_A*2, size_A*2), interpolation=Image.BICUBIC),
+                transforms.Normalize((0.5), (0.5))
                 ]
                 
 transforms_B = [ 
@@ -198,14 +199,14 @@ transforms_B = [
                 # transforms.Normalize((0.246), (0.170)),
                 transforms.Normalize((0.5), (0.5)),
                 transforms.CenterCrop(256)]
-test_dataset = ImageDataset_6mm(test_path, transforms_A=transforms_A, transforms_B=transforms_B, unaligned=False)
+test_dataset = ImageDataset_6mm(test_path, transforms_A=transforms_A, transforms_B=transforms_B, unaligned=True)
 
 ###### Training ######
 for epoch in range(epoch, n_epochs):
     real_out, fake_out = None, None
     for i, batch in enumerate(dataloader):
         real_A = Variable(input_A.copy_(batch['A']))
-        real_C = Variable(input_C.copy_(batch['C']))
+        # real_C = Variable(input_C.copy_(batch['C']))
         real_B = Variable(input_B.copy_(batch['B']))
 
         ######### (1) forward #########
@@ -216,6 +217,7 @@ for epoch in range(epoch, n_epochs):
         lf = utils.low_pass(real_A[0], i=8).unsqueeze(0).unsqueeze(0)
         lf_feature_A, hf_feature_A, fake_B = netG_A2B(lf, hf) # A2B: lf_feature, hf_feature, rc
 
+        tv_fake_B = criterion_ssim_TV_loss(fake_B)*0.5
         ## idt A->A ##
         _, _, idt_A = netG_B2A(hf, lf)
 
@@ -270,13 +272,13 @@ for epoch in range(epoch, n_epochs):
 
         loss_cycle_ABA = criterion_cycle(recovered_A, real_A)*10.0 + 0.5*criterion_feature(hf_feature_A, hf_feature_recovered_A) #+ criterion_feature(lf_feature_A, lf_feature_recovered_A) #+ criterion_phase(recovered_A, real_A)
         loss_cycle_BAB = criterion_cycle(recovered_B, real_B)*10.0 + 2.0*criterion_feature(hf_feature_B, hf_feature_recovered_B) #+ criterion_feature(lf_feature_B, lf_feature_recovered_B) #+ criterion_phase(recovered_B, real_B)
-        loss_idt = criterion_identity(real_A, idt_A)*2.0 +  criterion_identity(real_B, idt_B)*2.0 #+ criterion_phase(recovered_A, real_A) + criterion_phase(recovered_B, real_B)
+        loss_idt = criterion_identity(real_A, idt_A)*5.0 +  criterion_identity(real_B, idt_B)*5.0 #+ criterion_phase(recovered_A, real_A) + criterion_phase(recovered_B, real_B)
         # loss_cycle_ABA = criterion_cycle(recovered_A, real_A)*10 + criterion_feature(hf_feature_A, lf_feature_recovered_A) + criterion_feature(lf_feature_A, hf_feature_recovered_A) #+ criterion_phase(recovered_A, real_A)
         # loss_cycle_BAB = criterion_cycle(recovered_B, real_B)*10 + criterion_feature(hf_feature_B, lf_feature_recovered_B) + criterion_feature(lf_feature_B, hf_feature_recovered_B) #+ criterion_phase(recovered_B, real_B)
         loss_perceptual = criterion_perceptual.get_loss(recovered_A.repeat(1,3,1,1), real_A.repeat(1,3,1,1))
         loss_ssim = (1- criterion_ssim(recovered_A, real_A)) + (1 - criterion_ssim(recovered_B, real_B) )
 
-        loss_G = loss_GAN_A2B + loss_GAN_B2A + loss_cycle_ABA + loss_cycle_BAB + loss_idt #+ 5e-2*loss_perceptual#+ loss_strong_GAN_A2B + loss_strong_GAN_B2A
+        loss_G = loss_GAN_A2B + loss_GAN_B2A + loss_cycle_ABA + loss_cycle_BAB + loss_idt#+ 5e-2*loss_perceptual#+ loss_strong_GAN_A2B + loss_strong_GAN_B2A
 
         loss_G.backward()        
         optimizer_G.step()

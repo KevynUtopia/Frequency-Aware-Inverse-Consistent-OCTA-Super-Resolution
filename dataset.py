@@ -35,6 +35,33 @@ class ImageDataset(Dataset):
 
     def __len__(self):
         return max(len(self.files_A), len(self.files_B))
+# class ImageDataset(Dataset):
+#     def __init__(self, root, transforms_A=None, transforms_B=None, unaligned=False, size_A = 128):
+#         transforms_C = transforms_A + [transforms.Normalize((0.5), (0.5))]
+#         transforms_A = transforms_A + [transforms.Normalize((0.5), (0.5))]
+#         self.transformA = transforms.Compose(transforms_A)
+#         self.transformB = transforms.Compose(transforms_B)
+#         # self.transformC = transforms.Compose(transforms_C)
+
+#         self.unaligned = unaligned
+
+#         self.files_A = sorted(glob.glob(os.path.join(root, '6x6_256') + '/*.*'))
+#         self.files_B = sorted(glob.glob(os.path.join(root, '3x3_256') + '/*.*'))
+
+#     def __getitem__(self, index):
+#         files_A_name = self.files_A[index % len(self.files_A)]
+#         img_A = Image.open(files_A_name).convert('L')
+#         item_A = self.transformA(img_A)
+
+#         files_B_name = files_A_name.replace("6x6", "3x3").replace("_3.", "_6.")
+#         item_B = self.transformB(Image.open(files_B_name).convert('L'))
+
+#         # item_C = self.transformC(img_A)
+
+#         return {'A': item_A, 'B': item_B } #, 'C': item_C}
+
+#     def __len__(self):
+#         return max(len(self.files_A), len(self.files_B))
 
 class ImageDataset_6mm(Dataset):
     def __init__(self, root, transforms_A=None, transforms_B=None, unaligned=False, mode='train'):
