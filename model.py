@@ -14,6 +14,25 @@ import numpy as np
 from utils import high_pass, low_pass
 
 
+class TVLoss(nn.Module):
+    def __init__(self,TVLoss_weight=1):
+        super(TVLoss,self).__init__()
+        self.TVLoss_weight = TVLoss_weight
+ 
+    def forward(self,x):
+        batch_size = x.size()[0]
+        h_x = x.size()[2]
+        w_x = x.size()[3]
+        count_h = self._tensor_size(x[:,:,1:,:])
+        count_w = self._tensor_size(x[:,:,:,1:])
+        h_tv = torch.pow((x[:,:,1:,:]-x[:,:,:h_x-1,:]),2).sum()  
+        w_tv = torch.pow((x[:,:,:,1:]-x[:,:,:,:w_x-1]),2).sum()
+        return self.TVLoss_weight*2*(h_tv/count_h+w_tv/count_w)/batch_size
+ 
+    def _tensor_size(self,t):
+        return t.size()[1]*t.size()[2]*t.size()[3]
+
+
 class phase_consistency_loss(nn.Module):
     def __init__(self):
         super().__init__()
@@ -144,6 +163,7 @@ class FS_DiscriminatorA(nn.Module):
         dwt_D = self.net_dwt(dwt)
         dwt_D = F.avg_pool2d(dwt_D, dwt_D.size()[2:]).view(x.size()[0], -1)
 
+        # return (torch.flatten(x_D))
         return (torch.flatten(0.7*x_D + 0.3*dwt_D))
 
     def filter_wavelet(self, x, norm=True):
@@ -198,6 +218,9 @@ class FS_DiscriminatorB(nn.Module):
 
         # return dwt_D
         return (torch.flatten(0.7*x_D + 0.3*dwt_D))
+        # return (torch.flatten(x_D))
+
+
 
     def filter_wavelet(self, x, norm=True):
         LL, Hc = self.DWT2(x)
@@ -237,7 +260,7 @@ class NetworkA2B(nn.Module):
                                       ])
         self.A2B_input = nn.Sequential(*[nn.Conv2d(1, 64, kernel_size=4, stride=2, padding=1, bias=use_bias)
                                       ])
-        self.resnet = ResnetGenerator(input_nc=64, n_blocks=8)
+        self.resnet = ResnetGenerator(input_nc=64, output_nc=64, n_blocks=8)
     
     def forward(self, lf, hf):
         lf_feature = self.shallow_frequency(lf) #64x128^2
@@ -246,7 +269,7 @@ class NetworkA2B(nn.Module):
         # hf_feature = self.resnet(hf_feature_input)
         # A, B = hf_feature_input, self.resnet(hf_feature_input)
         # print(A.size(), B.size())
-        # print(hf_feature_input.size())
+        # print(self.resnet(hf_feature_input).size())
         hf_feature = self.unet_feature(torch.cat([hf_feature_input, self.resnet(hf_feature_input)], 1)) #64*256^2
         # return None, None, feature_map
         # print(lf_feature.size(), hf_feature.size())
@@ -267,7 +290,7 @@ class NetworkB2A(nn.Module):
                                         nn.Conv2d(128, 64, kernel_size=3, stride=1, padding=1, bias=use_bias),
                                         nn.BatchNorm2d(64)
                                       ])
-        self.resnet = ResnetGenerator(input_nc=128, n_blocks=8)
+        self.resnet = ResnetGenerator(input_nc=128, output_nc=64, n_blocks=8)
         self.B2A_input = nn.Sequential(*[nn.Conv2d(1, 128, kernel_size=4, stride=2, padding=1, bias=use_bias)
                                       ])
 

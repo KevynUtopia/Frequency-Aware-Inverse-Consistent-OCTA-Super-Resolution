@@ -196,6 +196,7 @@ def eval(model, epoch=0):
     lr = "./dataset/test/6x6_256/"
     hr = "./dataset/test/3x3_256/"
     num, psnr, ssim, mse, nmi= 0, 0, 0, 0, 0
+    # model.eval()
     T_1 = transforms.Compose([ transforms.ToTensor(),
                 transforms.Normalize((0.5), (0.5)),
                 # transforms.Resize([128, 128])
@@ -252,6 +253,7 @@ def eval(model, epoch=0):
 def eval_6m(model, dataset):
     n = len(dataset)
     num, psnr, ssim, mse, nmi= 0, 0, 0, 0, 0
+    # model.eval()
     for i in range(n):
         img = dataset[i]['A'].unsqueeze(0).cuda()
         gt = dataset[i]['B'].unsqueeze(0).cuda()
@@ -267,7 +269,7 @@ def eval_6m(model, dataset):
         # print(gt.shape)
         # print("fdsafasd fsdaf")
         gtimg = gt.cpu().detach().numpy().squeeze(0).squeeze(0)
-        psnr += (skimage.metrics.peak_signal_noise_ratio(yimg, gtimg))
+        psnr += (skimage.metrics.peak_signal_noise_ratio(yimg, gtimg, data_range=2))
         ssim += (skimage.metrics.structural_similarity(yimg, gtimg))
         mse += (skimage.metrics.mean_squared_error(yimg, gtimg))
         nmi += (skimage.metrics.normalized_mutual_information(yimg, gtimg))
@@ -277,6 +279,7 @@ def eval_6m(model, dataset):
 def eval_6m_baseline(model, dataset):
     n = len(dataset)
     num, psnr, ssim, mse, nmi= 0, 0, 0, 0, 0
+    # model.eval()
     for i in range(n):
         img = dataset[i]['A'].unsqueeze(0).cuda()
         gt = dataset[i]['B'].unsqueeze(0).cuda()
@@ -289,7 +292,7 @@ def eval_6m_baseline(model, dataset):
         # print(gt.shape)
         # print("fdsafasd fsdaf")
         gtimg = gt.cpu().detach().numpy().squeeze(0).squeeze(0)
-        psnr += (skimage.metrics.peak_signal_noise_ratio(yimg, gtimg))
+        psnr += (skimage.metrics.peak_signal_noise_ratio(yimg, gtimg, data_range=2))
         ssim += (skimage.metrics.structural_similarity(yimg, gtimg))
         mse += (skimage.metrics.mean_squared_error(yimg, gtimg))
         nmi += (skimage.metrics.normalized_mutual_information(yimg, gtimg))
