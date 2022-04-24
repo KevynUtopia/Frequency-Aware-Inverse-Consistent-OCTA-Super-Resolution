@@ -93,10 +93,7 @@ def guais_high_pass(img, radius=10):
 def high_pass(timg, i=4):
     f = torch.fft.fft2(timg[0])
     fshift = torch.fft.fftshift(f)
-    
-    # rows, cols = timg[0].shape
-    # crow, ccol = int(rows/2), int(cols/2)
-    # fshift[crow-i:crow+i, ccol-i:ccol+i] = 0
+
     mask = guais_high_pass(fshift, i).cuda()
     f = fshift * mask
 
@@ -108,16 +105,10 @@ def high_pass(timg, i=4):
 def low_pass(timg, i=10):
     f = torch.fft.fft2(timg[0])
     fshift = torch.fft.fftshift(f)
-    
-    # print(timg[0].shape)
     rows, cols = timg[0].shape
-    
     crow,ccol = int(rows/2), int(cols/2)
-    # mask = torch.zeros((rows, cols)).cuda()
-    # mask[crow-i:crow+i, ccol-i:ccol+i] = 1
     mask = guais_low_pass(fshift, i).cuda()
-    
-    
+
     f = fshift * mask
     
     ishift = torch.fft.ifftshift(f)
@@ -131,8 +122,6 @@ def bandreject_pass(timg, r_out=300, r_in=35):
     
     rows, cols = timg[0].shape
     crow,ccol = int(rows/2), int(cols/2)
-    # mask = torch.zeros((rows, cols)).cuda()
-    # mask[crow-i:crow+i, ccol-i:ccol+i] = 1
     mask = bandreject_filters(fshift, r_out, r_in).cuda()
     
     f = fshift * mask
@@ -191,15 +180,12 @@ def save_sample(epoch, tensor, suffix="_real"):
     plt.imsave('./checkpoint_exp/image_alt_'+str(epoch+1)+suffix+'.jpeg', output, cmap="gray")
 
 def eval(model, epoch=0):
-    # lr = "./dataset/OCTA_new/6mm_CROPPED/"
-    # hr = "./dataset/OCTA_new/3mm_CROPPED/"
     lr = "./dataset/test/6x6_256/"
     hr = "./dataset/test/3x3_256/"
     num, psnr, ssim, mse, nmi= 0, 0, 0, 0, 0
     # model.eval()
     T_1 = transforms.Compose([ transforms.ToTensor(),
                 transforms.Normalize((0.5), (0.5)),
-                # transforms.Resize([128, 128])
                  ])
     T_2 = transforms.Compose([ transforms.ToTensor(),                         
                   transforms.Normalize((0.5), (0.5))])
@@ -289,8 +275,6 @@ def eval_6m_baseline(model, dataset):
 
         yimg = y.cpu().detach().numpy().squeeze(0).squeeze(0)
         
-        # print(gt.shape)
-        # print("fdsafasd fsdaf")
         gtimg = gt.cpu().detach().numpy().squeeze(0).squeeze(0)
         psnr += (skimage.metrics.peak_signal_noise_ratio(yimg, gtimg, data_range=2))
         ssim += (skimage.metrics.structural_similarity(yimg, gtimg))

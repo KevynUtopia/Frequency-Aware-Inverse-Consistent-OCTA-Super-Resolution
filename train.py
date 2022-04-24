@@ -65,13 +65,6 @@ if torch.cuda.is_available() and not cuda:
 
 ###### Definition of variables ######
 # Networks
-
-
-# netG_A2B = UnetGenerator(output_nc, input_nc)
-# # if opt.pretrained:
-# #     model = torch.load(opt.pretrained_root)
-# #     netG_A2B.load_state_dict(model, strict=False)
-# netG_B2A = UnetGenerator(output_nc, input_nc)
 netG_A2B = NetworkA2B()
 netG_B2A = NetworkB2A()
 netD_A = FS_DiscriminatorA(input_nc)
@@ -95,24 +88,13 @@ criterion_GAN = torch.nn.MSELoss()
 criterion_cycle = torch.nn.L1Loss()
 criterion_phase = phase_consistency_loss()
 criterion_identity = torch.nn.L1Loss()
-
 criterion_perceptual = PerceptualLoss(torch.nn.MSELoss())
 criterion_ssim = ssim.SSIM()
 criterion_ssim_TV_loss= TVLoss().cuda()
-
 criterion_feature = torch.nn.BCEWithLogitsLoss()
-# criterion_feature = torch.nn.KLDivLoss(size_average=False)
-# criterion_feature = torch.nn.CosineEmbeddingLoss()
-# criterion_feature = torch.nn.HingeEmbeddingLoss()
-# criterion_feature = torch.nn.MSELoss()
-# criterion_feature = torch.nn.L1Loss()
 
 # Optimizers & LR schedulers
 optimizer_G = torch.optim.AdamW(itertools.chain(netG_A2B.parameters(), netG_B2A.parameters()), lr=lr, betas=(0.9, 0.999))
-# optimizer_G = torch.optim.SGD(itertools.chain(netG_A2B.parameters(), netG_B2A.parameters()), lr = lr, momentum=0.9)
-# optimizer_D_A = torch.optim.AdamW(netD_A.parameters(), lr=lr, betas=(0.5, 0.999))
-# optimizer_D_B = torch.optim.AdamW(netD_B.parameters(), lr=lr, betas=(0.5, 0.999))
-# optimizer_D = torch.optim.SGD(itertools.chain(netD_A.parameters(), netD_B.parameters()), lr = lr, momentum=0.9)
 optimizer_D = torch.optim.AdamW(itertools.chain(netD_A.parameters(), netD_B.parameters()), lr=lr, betas=(0.9, 0.999))
 
 if opt.scheduler:
@@ -121,9 +103,6 @@ if opt.scheduler:
 else:
     lr_scheduler_G = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_G, T_max=n_epochs, eta_min=0, verbose=True)
     lr_scheduler_D = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_G, T_max=n_epochs, eta_min=0, verbose=True)
-# lr_scheduler_D_A = torch.optim.lr_scheduler.LambdaLR(optimizer_D_A, lr_lambda=LambdaLR(n_epochs, epoch, decay_epoch).step)
-# lr_scheduler_D_B = torch.optim.lr_scheduler.LambdaLR(optimizer_D_B, lr_lambda=LambdaLR(n_epochs, epoch, decay_epoch).step)
-
 
 
 # Inputs & targets memory allocation
@@ -144,9 +123,6 @@ fake_B_buffer = ReplayBuffer()
 # Dataset loader
 transforms_A = [ 
                 transforms.ToTensor(),
-                # transforms.Normalize((0.246), (0.170)),
-                
-                # transforms.CenterCrop(size_A),
                 transforms.RandomCrop((size_A, size_A)),
                 transforms.Resize((size_A*2, size_A*2), interpolation=Image.BICUBIC),
                 transforms.Normalize((0.5), (0.5))
@@ -155,33 +131,14 @@ transforms_A = [
 transforms_B = [ 
                 transforms.ToTensor(),
                 transforms.Normalize((0.5), (0.5)),
-                # transforms.Normalize((0.286), (0.200)),
-                # transforms.CenterCrop(size_B),
                 transforms.RandomCrop((size_B, size_B))
                 ]
 dataset = ImageDataset(dataroot, transforms_A=transforms_A, transforms_B=transforms_B, unaligned=True)
 print (len(dataset))
 
-# test_path = "./dataset/evalution_6mm/parts"
-# transforms_A = [ 
-#                 transforms.ToTensor(),
-#                 # transforms.Normalize((0.246), (0.170)),
-#                 transforms.Normalize((0.5), (0.5)), 
-#                 transforms.CenterCrop(256)
-#                 # transforms.Resize((128, 128))
-#                 ]
-# transforms_B = [ 
-#                 transforms.ToTensor(),
-#                 # transforms.Normalize((0.246), (0.170)),
-#                 transforms.Normalize((0.5), (0.5)),
-#                 transforms.CenterCrop(256)]
-# test_dataset = ImageDataset_6mm(test_path, transforms_A=transforms_A, transforms_B=transforms_B, unaligned=False)
-# print (len(test_dataset))
 
 dataloader = DataLoader(dataset, batch_size=batchSize, shuffle=True)
 
-# Loss plot
-# logger = Logger(n_epochs, len(dataloader))
 ###################################
 
 
@@ -243,7 +200,6 @@ for epoch in range(epoch, n_epochs):
 
         ## idt B->B ##
         _, _, idt_B = netG_A2B(lf, hf)
-        # hf_feature_B, lf_feature_B, fake_A = netG_B2A(real_B)
 
         lf_feature_B = lf_feature_B.detach()
         lf_feature_B.requires_grad = False
@@ -270,15 +226,13 @@ for epoch in range(epoch, n_epochs):
 
 
 
-        loss_cycle_ABA = criterion_cycle(recovered_A, real_A)*10.0 + 0.5*criterion_feature(hf_feature_A, hf_feature_recovered_A) #+ criterion_feature(lf_feature_A, lf_feature_recovered_A) #+ criterion_phase(recovered_A, real_A)
-        loss_cycle_BAB = criterion_cycle(recovered_B, real_B)*10.0 + 2.0*criterion_feature(hf_feature_B, hf_feature_recovered_B) #+ criterion_feature(lf_feature_B, lf_feature_recovered_B) #+ criterion_phase(recovered_B, real_B)
-        loss_idt = criterion_identity(real_A, idt_A)*5.0 +  criterion_identity(real_B, idt_B)*5.0 #+ criterion_phase(recovered_A, real_A) + criterion_phase(recovered_B, real_B)
-        # loss_cycle_ABA = criterion_cycle(recovered_A, real_A)*10 + criterion_feature(hf_feature_A, lf_feature_recovered_A) + criterion_feature(lf_feature_A, hf_feature_recovered_A) #+ criterion_phase(recovered_A, real_A)
-        # loss_cycle_BAB = criterion_cycle(recovered_B, real_B)*10 + criterion_feature(hf_feature_B, lf_feature_recovered_B) + criterion_feature(lf_feature_B, hf_feature_recovered_B) #+ criterion_phase(recovered_B, real_B)
+        loss_cycle_ABA = criterion_cycle(recovered_A, real_A)*10.0 + 0.5*criterion_feature(hf_feature_A, hf_feature_recovered_A) 
+        loss_cycle_BAB = criterion_cycle(recovered_B, real_B)*10.0 + 2.0*criterion_feature(hf_feature_B, hf_feature_recovered_B) 
+        loss_idt = criterion_identity(real_A, idt_A)*5.0 +  criterion_identity(real_B, idt_B)*5.0
         loss_perceptual = criterion_perceptual.get_loss(recovered_A.repeat(1,3,1,1), real_A.repeat(1,3,1,1))
         loss_ssim = (1- criterion_ssim(recovered_A, real_A)) + (1 - criterion_ssim(recovered_B, real_B) )
 
-        loss_G = loss_GAN_A2B + loss_GAN_B2A + loss_cycle_ABA + loss_cycle_BAB + loss_idt#+ 5e-2*loss_perceptual#+ loss_strong_GAN_A2B + loss_strong_GAN_B2A
+        loss_G = loss_GAN_A2B + loss_GAN_B2A + loss_cycle_ABA + loss_cycle_BAB + loss_idt
 
         loss_G.backward()        
         optimizer_G.step()
@@ -344,7 +298,6 @@ for epoch in range(epoch, n_epochs):
                 torch.save(netG_B2A.state_dict(), './output_exp/netG_B2A_epoch'+str(epoch+1)+'.pth')
             
     print("Epoch (%d/%d) Finished" % (epoch+1, n_epochs))
-    train_eval(dataset, netG_A2B)
     eval(netG_A2B, epoch=epoch)
     eval_6m(netG_A2B, test_dataset)
     print("------------------------------------------")

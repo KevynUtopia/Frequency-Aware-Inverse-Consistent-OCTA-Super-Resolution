@@ -53,11 +53,10 @@ class phase_consistency_loss(nn.Module):
         f_x = torch.fft.fft2(x[0])
         fshift_x = torch.fft.fftshift(f_x)
         amp_x = (m * torch.log(torch.abs(fshift_x))).flatten()
-        # print(y.size())
         f_y = torch.fft.fft2(y[0])
         fshift_y = torch.fft.fftshift(f_y)
         amp_y = (m * torch.log(torch.abs(fshift_y))).flatten()
-        # print(amp_x.size(), amp_y.size())
+
         return -torch.cosine_similarity(amp_x, amp_y, dim=0)
 
 # Loss functions
@@ -156,7 +155,6 @@ class FS_DiscriminatorA(nn.Module):
 
     def forward(self, x, y=None):
         dwt, ximg = self.filter(x)
-        # LL, LH, HL, HH, ximg = self.filter(x)
         x = self.net(ximg)
         x_D = F.avg_pool2d(x, x.size()[2:]).view(x.size()[0], -1)
 
@@ -193,7 +191,6 @@ class FS_DiscriminatorB(nn.Module):
         self.DWT2 = DWTForward(J=1, wave='haar', mode='reflect')
         self.filter = self.filter_wavelet
         self.cs = cs
-        # n_input_channel = 3
         n_input_channel = 1
 
         print('# FS type: {}, kernel size={}'.format(filter_type.lower(), kernel_size))
@@ -209,7 +206,6 @@ class FS_DiscriminatorB(nn.Module):
 
     def forward(self, x, y=None):
         dwt, ximg = self.filter(x)
-        # LL, LH, HL, HH, ximg = self.filter(x)
         x = self.net(ximg)
         x_D = F.avg_pool2d(x, x.size()[2:]).view(x.size()[0], -1)
 
@@ -218,7 +214,6 @@ class FS_DiscriminatorB(nn.Module):
 
         # return dwt_D
         return (torch.flatten(0.7*x_D + 0.3*dwt_D))
-        # return (torch.flatten(x_D))
 
 
 
@@ -246,8 +241,7 @@ class NetworkA2B(nn.Module):
                                     nn.LeakyReLU(0.2, True),nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1, bias=use_bias),nn.BatchNorm2d(128),
                                     nn.ReLU(True),nn.Conv2d(128, 64, kernel_size=3, stride=1, padding=1, bias=use_bias),nn.BatchNorm2d(64)
 
-                                      ])
-        # self.shallow_frequency = shallowNet(in_dim=1, out_dim=64, up=False)                         
+                                      ])                 
         self.shallow_up = shallowNet(up=True)
         self.unet_feature = nn.Sequential(*[nn.ReLU(True),
                                         nn.Conv2d(128, 64, kernel_size=3, stride=1, padding=1, bias=use_bias),
@@ -265,14 +259,8 @@ class NetworkA2B(nn.Module):
     def forward(self, lf, hf):
         lf_feature = self.shallow_frequency(lf) #64x128^2
         hf_feature_input = self.A2B_input(hf) #64x128^2
-        # hf_feature = self.unet_feature(torch.cat([hf_feature_input, self.unet_up(self.unet(hf_feature_input))], 1)) #64*128^2
-        # hf_feature = self.resnet(hf_feature_input)
-        # A, B = hf_feature_input, self.resnet(hf_feature_input)
-        # print(A.size(), B.size())
-        # print(self.resnet(hf_feature_input).size())
         hf_feature = self.unet_feature(torch.cat([hf_feature_input, self.resnet(hf_feature_input)], 1)) #64*256^2
-        # return None, None, feature_map
-        # print(lf_feature.size(), hf_feature.size())
+
         return lf_feature, hf_feature, self.shallow_up(torch.cat([lf_feature, hf_feature], 1))
 
 
@@ -297,13 +285,8 @@ class NetworkB2A(nn.Module):
     
     def forward(self, hf, lf):
         hf_feature = self.shallow_frequency(hf) #64x256^2
-        # feature_map = self.unet(lf) #128x128^2
-        # print(lf.size())
         lf_feature = self.resnet(self.B2A_input(lf)) #64x256^2
-        # lf_feature = self.unet_feature(feature_map) #64*128^2
-        
-
-        # return None, None, feature_map
+     # return None, None, feature_map
         return hf_feature, lf_feature, self.shallow_up(torch.cat([hf_feature, lf_feature], 1))
 
 
@@ -336,8 +319,7 @@ class UnetGenerator(nn.Module):
 
     def forward(self, B):
         """Standard forward"""
-        # hf = high_pass(input[0], i=5).unsqueeze(0).unsqueeze(0) # (1, 320) 5
-        # input = (hf+input)/2.0
+
         return self.model(B)
 
 
@@ -432,10 +414,6 @@ class ResnetBlock(nn.Module):
 class shallowNet(nn.Module):
     def __init__(self, in_dim = 128, out_dim=1, up=False):
         super(shallowNet, self).__init__()
-        # if A2B:
-        #       model = [nn.ReLU(True), nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1, bias=False), nn.BatchNorm2d(64)]
-        # else:
-        #   model = [nn.ReLU(True), nn.Conv2d(64, 32, kernel_size=3, stride=1, padding=1, bias=False), nn.BatchNorm2d(64)]
         if up:
             model = [nn.ReLU(True), nn.ConvTranspose2d(in_dim, 64, kernel_size=4, stride=2, padding=1, bias=False), nn.BatchNorm2d(64)]
         else:
@@ -480,7 +458,6 @@ class ResnetGenerator(nn.Module):
                       nn.ReLU(True)]
         model += [nn.ReflectionPad2d(3)]
         model += [nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0)]
-        # model += [nn.Tanh()]
 
         self.model = nn.Sequential(*model)
 
