@@ -201,7 +201,7 @@ def eval(model, epoch=0):
             
             hf = high_pass(lr_img[0], i=10).unsqueeze(0).unsqueeze(0)
             hf = (hf+lr_img)/2.0
-            lf = low_pass(lr_img[0], i=7).unsqueeze(0).unsqueeze(0)
+            lf = low_pass(lr_img[0], i=8).unsqueeze(0).unsqueeze(0)
             _, _, sr_img = model(lf, hf)
 
             yimg = sr_img.cpu().detach().numpy().squeeze(0).squeeze(0)
@@ -228,7 +228,7 @@ def eval(model, epoch=0):
     
     hf = high_pass(lr_img[0], i=10).unsqueeze(0).unsqueeze(0)
     hf = (hf+lr_img)/2.0
-    lf = low_pass(lr_img[0], i=7).unsqueeze(0).unsqueeze(0)
+    lf = low_pass(lr_img[0], i=8).unsqueeze(0).unsqueeze(0)
     _, _, sr_img = model(lf, hf)
 
     save_sample(epoch, lr_img, "_eval_input")
@@ -247,7 +247,7 @@ def eval_6m(model, dataset):
 
         hf = high_pass(img[0], i=10).unsqueeze(0).unsqueeze(0)
         hf = (hf+img)/2.0
-        lf = low_pass(img[0], i=7).unsqueeze(0).unsqueeze(0)
+        lf = low_pass(img[0], i=8).unsqueeze(0).unsqueeze(0)
         _, _, y = model(lf, hf)
 
         yimg = y.cpu().detach().numpy().squeeze(0).squeeze(0)

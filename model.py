@@ -121,7 +121,7 @@ class Discriminator(nn.Module):
             nn.LeakyReLU(0.2, True)
         ]
 
-        sequence += [nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw), nn.Sigmoid()]  # output 1 channel prediction map
+        sequence += [nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]  # output 1 channel prediction map
         self.model = nn.Sequential(*sequence)
 
     def forward(self, input):
@@ -151,28 +151,18 @@ class FS_DiscriminatorA(nn.Module):
           self.net_dwt = Discriminator(input_nc=1)
         else:
           self.net_dwt = Discriminator(input_nc=3)
-        self.out_net = nn.Softmax(dim = 2)
-        self.sigm = nn.Sigmoid()
+        self.out_net = nn.Softmax()
 
     def forward(self, x, y=None):
         dwt, ximg = self.filter(x)
         x = self.net(ximg)
-        # x = self.sigm(x)
-        # print(x, x.size())
         x_D = F.avg_pool2d(x, x.size()[2:]).view(x.size()[0], -1)
-        # print("1", x_D, x_D.size())
-        
-        
 
         dwt_D = self.net_dwt(dwt)
-        # dwt_D = self.sigm(dwt_D)
-        # print(dwt_D)
-        dwt_D = F.avg_pool2d(dwt_D, dwt_D.size()[2:]).view(dwt_D.size()[0], -1)
-
+        dwt_D = F.avg_pool2d(dwt_D, dwt_D.size()[2:]).view(x.size()[0], -1)
 
         # return (torch.flatten(x_D))
-        # TODO: softmax: make sure x_D and dwt_D are in the same scale
-        return (torch.flatten(0.7*x_D + 0.3*dwt_D))
+        return (torch.flatten(x_D + dwt_D))
 
     def filter_wavelet(self, x, norm=True):
         LL, Hc = self.DWT2(x)
@@ -223,8 +213,7 @@ class FS_DiscriminatorB(nn.Module):
         dwt_D = F.avg_pool2d(dwt_D, dwt_D.size()[2:]).view(x.size()[0], -1)
 
         # return dwt_D
-        # TODO: softmax: make sure x_D and dwt_D are in the same scale
-        return (torch.flatten(0.7*x_D + 0.3*dwt_D))
+        return (torch.flatten(x_D + dwt_D))
 
 
 
@@ -250,15 +239,13 @@ class NetworkA2B(nn.Module):
         self.unet = UnetGenerator(input_nc=64, output_nc=64, num_downs=7)
         self.shallow_frequency = nn.Sequential(*[nn.Conv2d(1, 64, kernel_size=4, stride=2, padding=1, bias=use_bias),
                                     nn.LeakyReLU(0.2, True),nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1, bias=use_bias),nn.BatchNorm2d(128),
-                                    nn.ReLU(True),nn.Conv2d(128, 64, kernel_size=3, stride=1, padding=1, bias=use_bias),nn.BatchNorm2d(64),
-                                    # nn.Sigmoid()
+                                    nn.ReLU(True),nn.Conv2d(128, 64, kernel_size=3, stride=1, padding=1, bias=use_bias),nn.BatchNorm2d(64)
 
                                       ])                 
         self.shallow_up = shallowNet(up=True)
         self.unet_feature = nn.Sequential(*[nn.ReLU(True),
                                         nn.Conv2d(128, 64, kernel_size=3, stride=1, padding=1, bias=use_bias),
-                                        nn.BatchNorm2d(64),
-                                        # nn.Sigmoid()
+                                        nn.BatchNorm2d(64)
                                       ])
     
         self.unet_up = nn.Sequential(*[nn.ReLU(True),
@@ -268,14 +255,13 @@ class NetworkA2B(nn.Module):
         self.A2B_input = nn.Sequential(*[nn.Conv2d(1, 64, kernel_size=4, stride=2, padding=1, bias=use_bias)
                                       ])
         self.resnet = ResnetGenerator(input_nc=64, output_nc=64, n_blocks=8)
-        self.sig = nn.Sigmoid()
     
     def forward(self, lf, hf):
         lf_feature = self.shallow_frequency(lf) #64x128^2
         hf_feature_input = self.A2B_input(hf) #64x128^2
         hf_feature = self.unet_feature(torch.cat([hf_feature_input, self.resnet(hf_feature_input)], 1)) #64*256^2
 
-        return self.sig(lf_feature), self.sig(hf_feature), self.shallow_up(torch.cat([lf_feature, hf_feature], 1))
+        return lf_feature, hf_feature, self.shallow_up(torch.cat([lf_feature, hf_feature], 1))
 
 
 class NetworkB2A(nn.Module):
@@ -284,28 +270,24 @@ class NetworkB2A(nn.Module):
         self.unet = UnetGenerator(input_nc=1, output_nc=1, num_downs=8)
         self.shallow_frequency = nn.Sequential(*[nn.Conv2d(1, 64, kernel_size=4, stride=2, padding=1, bias=use_bias),
                                     nn.LeakyReLU(0.2, True),nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1, bias=use_bias),nn.BatchNorm2d(128),
-                                    nn.ReLU(True),nn.Conv2d(128, 64, kernel_size=3, stride=1, padding=1, bias=use_bias),nn.BatchNorm2d(64),
-                                    # nn.Sigmoid()
-                                    
+                                    nn.ReLU(True),nn.Conv2d(128, 64, kernel_size=3, stride=1, padding=1, bias=use_bias),nn.BatchNorm2d(64)
 
                                       ])
         self.shallow_up = shallowNet(up=True)
         self.unet_feature = nn.Sequential(*[nn.ReLU(True),
                                         nn.Conv2d(128, 64, kernel_size=3, stride=1, padding=1, bias=use_bias),
-                                        nn.BatchNorm2d(64),
-                                        # nn.Sigmoid()
+                                        nn.BatchNorm2d(64)
                                       ])
         self.resnet = ResnetGenerator(input_nc=128, output_nc=64, n_blocks=8)
         self.B2A_input = nn.Sequential(*[nn.Conv2d(1, 128, kernel_size=4, stride=2, padding=1, bias=use_bias)
                                       ])
-        self.sig = nn.Sigmoid()
 
     
     def forward(self, hf, lf):
         hf_feature = self.shallow_frequency(hf) #64x256^2
         lf_feature = self.resnet(self.B2A_input(lf)) #64x256^2
      # return None, None, feature_map
-        return self.sig(hf_feature), self.sig(lf_feature), self.shallow_up(torch.cat([hf_feature, lf_feature], 1))
+        return hf_feature, lf_feature, self.shallow_up(torch.cat([hf_feature, lf_feature], 1))
 
 
 
