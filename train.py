@@ -144,16 +144,13 @@ dataloader = DataLoader(dataset, batch_size=batchSize, shuffle=True)
 
 test_path = "./dataset/evalution_6mm/parts"
 transforms_A = [ 
-                transforms.ToTensor(),
-                # transforms.Normalize((0.246), (0.170)),
-                 
+                transforms.ToTensor(),                 
                 transforms.CenterCrop(256),
                 transforms.Normalize((0.5), (0.5)),
                 # transforms.Resize((128, 128))
                 ]
 transforms_B = [ 
                 transforms.ToTensor(),
-                # transforms.Normalize((0.246), (0.170)),
                 transforms.Normalize((0.5), (0.5)),
                 transforms.CenterCrop(256)]
 test_dataset = ImageDataset_6mm(test_path, transforms_A=transforms_A, transforms_B=transforms_B, unaligned=True)
@@ -163,7 +160,6 @@ for epoch in range(epoch, n_epochs):
     real_out, fake_out = None, None
     for i, batch in enumerate(dataloader):
         real_A = Variable(input_A.copy_(batch['A']))
-        # real_C = Variable(input_C.copy_(batch['C']))
         real_B = Variable(input_B.copy_(batch['B']))
 
         ######### (1) forward #########
@@ -225,12 +221,12 @@ for epoch in range(epoch, n_epochs):
 
 
 
-
+        ###### Loss function for generators ######
         loss_cycle_ABA = criterion_cycle(recovered_A, real_A)*10.0 + 2.0*criterion_feature(hf_feature_A, hf_feature_recovered_A) 
         loss_cycle_BAB = criterion_cycle(recovered_B, real_B)*10.0 + 0.5*criterion_feature(hf_feature_B, hf_feature_recovered_B) 
         loss_idt = criterion_identity(real_A, idt_A)*5.0 +  criterion_identity(real_B, idt_B)*5.0
-        loss_perceptual = criterion_perceptual.get_loss(recovered_A.repeat(1,3,1,1), real_A.repeat(1,3,1,1))
-        loss_ssim = (1- criterion_ssim(recovered_A, real_A)) + (1 - criterion_ssim(recovered_B, real_B) )
+        # loss_perceptual = criterion_perceptual.get_loss(recovered_A.repeat(1,3,1,1), real_A.repeat(1,3,1,1))
+        # loss_ssim = (1- criterion_ssim(recovered_A, real_A)) + (1 - criterion_ssim(recovered_B, real_B) )
 
         loss_G = loss_GAN_A2B + loss_GAN_B2A + loss_cycle_ABA + loss_cycle_BAB + loss_idt
 
@@ -241,6 +237,7 @@ for epoch in range(epoch, n_epochs):
         set_requires_grad([netD_A, netD_B], True)
         optimizer_D.zero_grad()
 
+        ###### Loss function for discriminators ######
         # Real loss
         pred_real = netD_A(real_A)
         loss_D_real = criterion_GAN(pred_real, target_real)
@@ -268,7 +265,7 @@ for epoch in range(epoch, n_epochs):
         
         ####################################
         ####################################
-
+        ###### training examples ######
         if i == 1:
             input_tmp = Tensor(batchSize, input_nc, size_A*2, size_A*2)
             x = Variable(input_tmp.copy_(batch['A']))
@@ -285,7 +282,7 @@ for epoch in range(epoch, n_epochs):
     lr_scheduler_G.step()
     lr_scheduler_D.step()
 
-    
+    # save checkpoints
     if opt.pretrained:
         if (epoch<opt.decay_epoch and epoch%5==4) or (epoch>=opt.decay_epoch):
             torch.save(netG_A2B.state_dict(), './output_exp/netG_A2B_epoch'+str(epoch+1)+'.pth')
@@ -298,6 +295,8 @@ for epoch in range(epoch, n_epochs):
                 torch.save(netG_B2A.state_dict(), './output_exp/netG_B2A_epoch'+str(epoch+1)+'.pth')
             
     print("Epoch (%d/%d) Finished" % (epoch+1, n_epochs))
+
+    # evaluations
     eval(netG_A2B, epoch=epoch)
     eval_6m(netG_A2B, test_dataset)
     print("------------------------------------------")
