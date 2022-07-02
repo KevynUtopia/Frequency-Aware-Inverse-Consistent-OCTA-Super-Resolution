@@ -222,8 +222,8 @@ for epoch in range(epoch, n_epochs):
 
 
         ###### Loss function for generators ######
-        loss_cycle_ABA = criterion_cycle(recovered_A, real_A)*10.0 + 2.0*criterion_feature(hf_feature_A, hf_feature_recovered_A) 
-        loss_cycle_BAB = criterion_cycle(recovered_B, real_B)*10.0 + 0.5*criterion_feature(hf_feature_B, hf_feature_recovered_B) 
+        loss_cycle_ABA = criterion_cycle(recovered_A, real_A)*10.0 + criterion_feature(hf_feature_A, hf_feature_recovered_A) 
+        loss_cycle_BAB = criterion_cycle(recovered_B, real_B)*10.0 + 0.25*criterion_feature(hf_feature_B, hf_feature_recovered_B) 
         loss_idt = criterion_identity(real_A, idt_A)*5.0 +  criterion_identity(real_B, idt_B)*5.0
         # loss_perceptual = criterion_perceptual.get_loss(recovered_A.repeat(1,3,1,1), real_A.repeat(1,3,1,1))
         # loss_ssim = (1- criterion_ssim(recovered_A, real_A)) + (1 - criterion_ssim(recovered_B, real_B) )
