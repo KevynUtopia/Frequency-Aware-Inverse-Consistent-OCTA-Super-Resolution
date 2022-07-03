@@ -38,7 +38,6 @@ class phase_consistency_loss(nn.Module):
         super().__init__()
         
     def forward(self, x, y):
-        # print(x.size())
         radius = 5
         rows, cols = x[0][0].shape
         center = int(rows / 2), int(cols / 2)
@@ -56,7 +55,6 @@ class phase_consistency_loss(nn.Module):
         f_y = torch.fft.fft2(y[0])
         fshift_y = torch.fft.fftshift(f_y)
         amp_y = (m * torch.log(torch.abs(fshift_y))).flatten()
-
         return -torch.cosine_similarity(amp_x, amp_y, dim=0)
 
 # Loss functions
@@ -128,8 +126,9 @@ class Discriminator(nn.Module):
         """Standard forward."""
         return self.model(input)
 
-
-################# Discriminator ####################
+#################################################################
+################# Frequency Discriminator ####################
+#################################################################
 class FS_DiscriminatorA(nn.Module):
     def __init__(self, recursions=1, stride=1, kernel_size=5, wgan=False, highpass=True, D_arch='FSD',
                  norm_layer='Instance', filter_type='gau', cs='sum'):
@@ -144,7 +143,7 @@ class FS_DiscriminatorA(nn.Module):
 
         print('# FS type: {}, kernel size={}'.format(filter_type.lower(), kernel_size))
         
-        ######## defining spatial and frequency discriminators ########
+
         self.net = Discriminator(input_nc=1)
         if cs=='sum':
           self.net_dwt = Discriminator(input_nc=1)
@@ -154,6 +153,7 @@ class FS_DiscriminatorA(nn.Module):
 
     def forward(self, x, y=None):
         dwt, ximg = self.filter(x)
+        # LL, LH, HL, HH, ximg = self.filter(x)
         x = self.net(ximg)
         x_D = F.avg_pool2d(x, x.size()[2:]).view(x.size()[0], -1)
 
@@ -161,7 +161,7 @@ class FS_DiscriminatorA(nn.Module):
         dwt_D = F.avg_pool2d(dwt_D, dwt_D.size()[2:]).view(x.size()[0], -1)
 
         # return (torch.flatten(x_D))
-        return (torch.flatten(1.0*x_D + 0.*dwt_D))
+        return (torch.flatten(0.7*x_D + 0.3*dwt_D))
 
     def filter_wavelet(self, x, norm=True):
         LL, Hc = self.DWT2(x)
@@ -190,11 +190,12 @@ class FS_DiscriminatorB(nn.Module):
         self.DWT2 = DWTForward(J=1, wave='haar', mode='reflect')
         self.filter = self.filter_wavelet
         self.cs = cs
+        # n_input_channel = 3
         n_input_channel = 1
 
         print('# FS type: {}, kernel size={}'.format(filter_type.lower(), kernel_size))
         
-        ######## defining spatial and frequency discriminators ########
+
         self.net = Discriminator(input_nc=1)
         if cs=='sum':
           self.net_dwt = Discriminator(input_nc=1)
@@ -205,6 +206,7 @@ class FS_DiscriminatorB(nn.Module):
 
     def forward(self, x, y=None):
         dwt, ximg = self.filter(x)
+        # LL, LH, HL, HH, ximg = self.filter(x)
         x = self.net(ximg)
         x_D = F.avg_pool2d(x, x.size()[2:]).view(x.size()[0], -1)
 
@@ -212,7 +214,8 @@ class FS_DiscriminatorB(nn.Module):
         dwt_D = F.avg_pool2d(dwt_D, dwt_D.size()[2:]).view(x.size()[0], -1)
 
         # return dwt_D
-        return (torch.flatten(1.0*x_D + 0.*dwt_D))
+        return (torch.flatten(0.7*x_D + 0.3*dwt_D))
+        # return (torch.flatten(x_D))
 
 
 
@@ -231,23 +234,25 @@ class FS_DiscriminatorB(nn.Module):
         else:
             raise NotImplementedError('Wavelet format [{:s}] not recognized'.format(self.cs))
 
-################# Generators ####################
-'''
-NetworkA2B: restoration network
-NetworkB2A: degradation network
-'''
+
 class NetworkA2B(nn.Module):
     def __init__(self, use_bias=False):
         super(NetworkA2B, self).__init__()
-        # self.unet = UnetGenerator(input_nc=64, output_nc=64, num_downs=7)
+        self.unet = UnetGenerator(input_nc=64, output_nc=64, num_downs=7)
         self.shallow_frequency = nn.Sequential(*[nn.Conv2d(1, 64, kernel_size=4, stride=2, padding=1, bias=use_bias),
                                     nn.LeakyReLU(0.2, True),nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1, bias=use_bias),nn.BatchNorm2d(128),
                                     nn.ReLU(True),nn.Conv2d(128, 64, kernel_size=3, stride=1, padding=1, bias=use_bias),nn.BatchNorm2d(64)
 
-                                      ])                 
+                                      ])
+        # self.shallow_frequency = shallowNet(in_dim=1, out_dim=64, up=False)                         
         self.shallow_up = shallowNet(up=True)
         self.skip = nn.Sequential(*[nn.ReLU(True),
                                         nn.Conv2d(128, 64, kernel_size=3, stride=1, padding=1, bias=use_bias),
+                                        nn.BatchNorm2d(64)
+                                      ])
+    
+        self.unet_up = nn.Sequential(*[nn.ReLU(True),
+                                        nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1, bias=use_bias),
                                         nn.BatchNorm2d(64)
                                       ])
         self.A2B_input = nn.Sequential(*[nn.Conv2d(1, 64, kernel_size=4, stride=2, padding=1, bias=use_bias)
@@ -255,13 +260,12 @@ class NetworkA2B(nn.Module):
         self.resnet = ResnetGenerator(input_nc=64, output_nc=64, n_blocks=8)
     
     def forward(self, lf, hf):
-        # shallow network for low-frequency
         lf_feature = self.shallow_frequency(lf) #64x128^2
-        # input of high-frequency into deep network
         hf_feature_input = self.A2B_input(hf) #64x128^2
-        # deep network and a long-distance skip connection
+
+
         hf_feature = self.skip(torch.cat([hf_feature_input, self.resnet(hf_feature_input)], 1)) #64*256^2
-        # output feature maps and reconstruct high-resolution angiogram using shallow network
+        # return None, None, feature_map
         return lf_feature, hf_feature, self.shallow_up(torch.cat([lf_feature, hf_feature], 1))
 
 
@@ -285,114 +289,15 @@ class NetworkB2A(nn.Module):
 
     
     def forward(self, hf, lf):
-        # shallow network for low-frequency
         hf_feature = self.shallow_frequency(hf) #64x256^2
-        # deep network for high-frequency
+        # feature_map = self.unet(lf) #128x128^2
         lf_feature = self.resnet(self.B2A_input(lf)) #64x256^2
-        # output feature maps and reconstruct low-resolution angiogram using shallow network
+        # lf_feature = self.skip(feature_map) #64*128^2
+        
+
+        # return None, None, feature_map
         return hf_feature, lf_feature, self.shallow_up(torch.cat([hf_feature, lf_feature], 1))
 
-
-################# modules for residual blocks ####################
-class ResnetBlock(nn.Module):
-    """Define a Resnet block"""
-
-    def __init__(self, dim=64, norm_layer=nn.BatchNorm2d, use_bias=False):
-        super(ResnetBlock, self).__init__()
-        self.conv_block = self.build_conv_block(dim, norm_layer, use_bias=False)
-
-    def build_conv_block(self, dim=64, norm_layer=nn.BatchNorm2d, use_bias=False):
-        # nn.ReplicationPad2d(1)
-        conv_block = [nn.Conv2d(dim, dim, kernel_size=3, stride=1, padding=1, bias=use_bias), norm_layer(dim), 
-                       nn.ReLU(True),
-                       nn.Conv2d(dim, dim, kernel_size=3, stride=1, padding=1, bias=use_bias), norm_layer(dim)]
-
-        return nn.Sequential(*conv_block)
-
-    def forward(self, x):
-        """Forward function (with skip connections)"""
-        out = x + self.conv_block(x)  # add skip connections
-        return out
-
-class shallowNet(nn.Module):
-    def __init__(self, in_dim = 128, out_dim=1, up=False):
-        super(shallowNet, self).__init__()
-        if up:
-            model = [nn.ReLU(True), nn.ConvTranspose2d(in_dim, 64, kernel_size=4, stride=2, padding=1, bias=False), nn.BatchNorm2d(64)]
-        else:
-            model = [nn.ReLU(True), nn.Conv2d(in_dim, 64, kernel_size=3, stride=1, padding=1, bias=False), nn.BatchNorm2d(64)]
-        model += [ResnetBlock()]
-        model += [ResnetBlock()]
-        model += [ResnetBlock()]
-        # model += [ResnetBlock()]
-        model += [nn.ReLU(True), nn.Conv2d(64, out_dim, kernel_size=3, stride=1, padding=1, bias=False), nn.Tanh()]
-        self.model = nn.Sequential(*model)
-    
-    def forward(self, x):
-        return self.model(x)
-    
-class ResnetGenerator(nn.Module):
-    def __init__(self, input_nc=64, output_nc=64, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=8, padding_type='reflect'):
-        assert(n_blocks >= 0)
-        super(ResnetGenerator, self).__init__()
-        use_bias = norm_layer == nn.InstanceNorm2d
-
-        model = [nn.ReflectionPad2d(3),
-                 nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0, bias=use_bias),
-                 norm_layer(ngf),
-                 nn.ReLU(True)]
-
-        n_downsampling = 2
-        for i in range(n_downsampling):  # add downsampling layers
-            mult = 2 ** i
-            model += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=2, padding=1, bias=use_bias),
-                      norm_layer(ngf * mult * 2),
-                      nn.ReLU(True)]
-
-        mult = 2 ** n_downsampling
-        for i in range(n_blocks):       # add ResNet blocks
-
-            model += [ResidualBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
-
-        for i in range(n_downsampling):  # add upsampling layers
-            mult = 2 ** (n_downsampling - i)
-            model += [nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2), kernel_size=3, stride=2, padding=1, output_padding=1, bias=use_bias),
-                      norm_layer(int(ngf * mult / 2)),
-                      nn.ReLU(True)]
-        model += [nn.ReflectionPad2d(3)]
-        model += [nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0)]
-
-        self.model = nn.Sequential(*model)
-
-    def forward(self, input):
-        """Standard forward"""
-        return self.model(input)
-
-
-class ResidualBlock(nn.Module):
-    """Define a Resnet block"""
-
-    def __init__(self, dim, padding_type, norm_layer, use_dropout, use_bias):
-        super(ResidualBlock, self).__init__()
-        self.conv_block = self.build_conv_block(dim, norm_layer, use_dropout, use_bias)
-
-    def build_conv_block(self, dim, norm_layer, use_dropout, use_bias):
-        conv_block = []
-        p = 1
-
-        conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias), norm_layer(dim), nn.ReLU(True)]
-        if use_dropout:
-            conv_block += [nn.Dropout(0.5)]
-
-        p = 1
-        conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias), norm_layer(dim)]
-
-        return nn.Sequential(*conv_block)
-
-    def forward(self, x):
-        """Forward function (with skip connections)"""
-        out = x + self.conv_block(x)  # add skip connections
-        return out
 
 
 class UnetGenerator(nn.Module):
@@ -423,7 +328,8 @@ class UnetGenerator(nn.Module):
 
     def forward(self, B):
         """Standard forward"""
-
+        # hf = high_pass(input[0], i=5).unsqueeze(0).unsqueeze(0) # (1, 320) 5
+        # input = (hf+input)/2.0
         return self.model(B)
 
 
@@ -493,3 +399,109 @@ class UnetSkipConnectionBlock(nn.Module):
             return out
         else:   # add skip connections
             return torch.cat([x, self.model(x)], 1)
+
+
+class ResnetBlock(nn.Module):
+    """Define a Resnet block"""
+
+    def __init__(self, dim=64, norm_layer=nn.BatchNorm2d, use_bias=False):
+        super(ResnetBlock, self).__init__()
+        self.conv_block = self.build_conv_block(dim, norm_layer, use_bias=False)
+
+    def build_conv_block(self, dim=64, norm_layer=nn.BatchNorm2d, use_bias=False):
+        # nn.ReplicationPad2d(1)
+        conv_block = [nn.Conv2d(dim, dim, kernel_size=3, stride=1, padding=1, bias=use_bias), norm_layer(dim), 
+                       nn.ReLU(True),
+                       nn.Conv2d(dim, dim, kernel_size=3, stride=1, padding=1, bias=use_bias), norm_layer(dim)]
+
+        return nn.Sequential(*conv_block)
+
+    def forward(self, x):
+        """Forward function (with skip connections)"""
+        out = x + self.conv_block(x)  # add skip connections
+        return out
+
+class shallowNet(nn.Module):
+    def __init__(self, in_dim = 128, out_dim=1, up=False):
+        super(shallowNet, self).__init__()
+        # if A2B:
+        #       model = [nn.ReLU(True), nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1, bias=False), nn.BatchNorm2d(64)]
+        # else:
+        #   model = [nn.ReLU(True), nn.Conv2d(64, 32, kernel_size=3, stride=1, padding=1, bias=False), nn.BatchNorm2d(64)]
+        if up:
+            model = [nn.ReLU(True), nn.ConvTranspose2d(in_dim, 64, kernel_size=4, stride=2, padding=1, bias=False), nn.BatchNorm2d(64)]
+        else:
+            model = [nn.ReLU(True), nn.Conv2d(in_dim, 64, kernel_size=3, stride=1, padding=1, bias=False), nn.BatchNorm2d(64)]
+        model += [ResnetBlock()]
+        model += [ResnetBlock()]
+        model += [ResnetBlock()]
+        # model += [ResnetBlock()]
+        model += [nn.ReLU(True), nn.Conv2d(64, out_dim, kernel_size=3, stride=1, padding=1, bias=False), nn.Tanh()]
+        self.model = nn.Sequential(*model)
+    
+    def forward(self, x):
+        return self.model(x)
+    
+class ResnetGenerator(nn.Module):
+    def __init__(self, input_nc=64, output_nc=64, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=8, padding_type='reflect'):
+        assert(n_blocks >= 0)
+        super(ResnetGenerator, self).__init__()
+        use_bias = norm_layer == nn.InstanceNorm2d
+
+        model = [nn.ReflectionPad2d(3),
+                 nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0, bias=use_bias),
+                 norm_layer(ngf),
+                 nn.ReLU(True)]
+
+        n_downsampling = 2
+        for i in range(n_downsampling):  # add downsampling layers
+            mult = 2 ** i
+            model += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=2, padding=1, bias=use_bias),
+                      norm_layer(ngf * mult * 2),
+                      nn.ReLU(True)]
+
+        mult = 2 ** n_downsampling
+        for i in range(n_blocks):       # add ResNet blocks
+
+            model += [ResidualBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
+
+        for i in range(n_downsampling):  # add upsampling layers
+            mult = 2 ** (n_downsampling - i)
+            model += [nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2), kernel_size=3, stride=2, padding=1, output_padding=1, bias=use_bias),
+                      norm_layer(int(ngf * mult / 2)),
+                      nn.ReLU(True)]
+        model += [nn.ReflectionPad2d(3)]
+        model += [nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0)]
+        # model += [nn.Tanh()]
+
+        self.model = nn.Sequential(*model)
+
+    def forward(self, input):
+        """Standard forward"""
+        return self.model(input)
+
+
+class ResidualBlock(nn.Module):
+    """Define a Resnet block"""
+
+    def __init__(self, dim, padding_type, norm_layer, use_dropout, use_bias):
+        super(ResidualBlock, self).__init__()
+        self.conv_block = self.build_conv_block(dim, norm_layer, use_dropout, use_bias)
+
+    def build_conv_block(self, dim, norm_layer, use_dropout, use_bias):
+        conv_block = []
+        p = 1
+
+        conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias), norm_layer(dim), nn.ReLU(True)]
+        if use_dropout:
+            conv_block += [nn.Dropout(0.5)]
+
+        p = 1
+        conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias), norm_layer(dim)]
+
+        return nn.Sequential(*conv_block)
+
+    def forward(self, x):
+        """Forward function (with skip connections)"""
+        out = x + self.conv_block(x)  # add skip connections
+        return out
