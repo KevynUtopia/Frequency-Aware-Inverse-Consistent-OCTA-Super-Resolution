@@ -183,7 +183,7 @@ def eval(model, epoch=0):
     lr = "./dataset/test/6x6_256/"
     hr = "./dataset/test/3x3_256/"
     num, psnr, ssim, mse, nmi= 0, 0, 0, 0, 0
-    # model.eval()
+    model.eval()
     T_1 = transforms.Compose([ transforms.ToTensor(),
                 transforms.Normalize((0.5), (0.5)),
                  ])
@@ -239,7 +239,7 @@ def eval(model, epoch=0):
 def eval_6m(model, dataset):
     n = len(dataset)
     num, psnr, ssim, mse, nmi= 0, 0, 0, 0, 0
-    # model.eval()
+    model.eval()
     for i in range(n):
         img = dataset[i]['A'].unsqueeze(0).cuda()
         gt = dataset[i]['B'].unsqueeze(0).cuda()
@@ -265,7 +265,7 @@ def eval_6m(model, dataset):
 def eval_6m_baseline(model, dataset):
     n = len(dataset)
     num, psnr, ssim, mse, nmi= 0, 0, 0, 0, 0
-    # model.eval()
+    model.eval()
     for i in range(n):
         img = dataset[i]['A'].unsqueeze(0).cuda()
         gt = dataset[i]['B'].unsqueeze(0).cuda()
