@@ -1,7 +1,7 @@
 # Frequency-Aware Inverse-Consistent Deep Learning for OCT-Angiogram Super-Resolution
 
 This is the official PyTorch implementation of "Frequency-Aware Inverse-Consistent Deep Learning for OCT-Angiogram Super-Resolution", MICCAI 2022.  
-Please follow `CycleSR.ipynb` to execute the code.  
+Please follow `main.ipynb` to execute the code.  
 
 ## Illustration of our method:  
 
