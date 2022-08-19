@@ -47,6 +47,11 @@ parser.add_argument('--input_nc', type=int, default=1, help='number of channels 
 parser.add_argument('--output_nc', type=int, default=1, help='number of channels of output data')
 parser.add_argument('--cuda', action='store_true', help='use GPU computation')
 parser.add_argument('--n_cpu', type=int, default=2, help='number of cpu threads to use during batch generation')
+parser.add_argument('--beta1', type=float, default=0.25, help='beta 1')
+parser.add_argument('--beta2', type=float, default=10.0, help='beta 2')
+parser.add_argument('--beta3', type=float, default=2.0, help='beta 3')
+parser.add_argument('--beta4', type=float, default=0.5, help='beta 4')
+parser.add_argument('--beta5', type=float, default=0.5, help='beta 5')
 opt = parser.parse_args()
 print(opt)
 
@@ -214,17 +219,17 @@ for epoch in range(epoch, n_epochs):
         optimizer_G.zero_grad()
 
         pred_fake = netD_B(fake_B)
-        loss_GAN_A2B = criterion_GAN(pred_fake, target_real)
+        loss_GAN_A2B = criterion_GAN(pred_fake, target_real)*opt.beta4
 
         pred_fake = netD_A(fake_A)
-        loss_GAN_B2A = criterion_GAN(pred_fake, target_real)
+        loss_GAN_B2A = criterion_GAN(pred_fake, target_real)*opt.beta5
 
 
 
         ###### Loss function for generators ######
-        loss_cycle_ABA = criterion_cycle(recovered_A, real_A)*10.0 + criterion_feature(hf_feature_A, hf_feature_recovered_A) 
-        loss_cycle_BAB = criterion_cycle(recovered_B, real_B)*10.0 + 0.25*criterion_feature(hf_feature_B, hf_feature_recovered_B) 
-        loss_idt = criterion_identity(real_A, idt_A)*5.0 +  criterion_identity(real_B, idt_B)*5.0
+        loss_cycle_ABA = criterion_cycle(recovered_A, real_A)*opt.beta3 + criterion_feature(hf_feature_A, hf_feature_recovered_A) 
+        loss_cycle_BAB = criterion_cycle(recovered_B, real_B)*opt.beta3 + opt.beta1*criterion_feature(hf_feature_B, hf_feature_recovered_B) 
+        loss_idt = criterion_identity(real_A, idt_A)*opt.beta2 +  criterion_identity(real_B, idt_B)*opt.beta2
         # loss_perceptual = criterion_perceptual.get_loss(recovered_A.repeat(1,3,1,1), real_A.repeat(1,3,1,1))
         # loss_ssim = (1- criterion_ssim(recovered_A, real_A)) + (1 - criterion_ssim(recovered_B, real_B) )
 
