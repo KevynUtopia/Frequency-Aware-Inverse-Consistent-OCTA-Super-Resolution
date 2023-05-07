@@ -180,8 +180,8 @@ def save_sample(epoch, tensor, suffix="_real"):
     plt.imsave('./checkpoint_exp/image_alt_'+str(epoch+1)+suffix+'.jpeg', output, cmap="gray")
 
 def eval(model, epoch=0):
-    lr = "./dataset/test/6x6_256/"
-    hr = "./dataset/test/3x3_256/"
+    lr = "../octa/dataset/test/6mm_x2/"
+    hr = "../octa/dataset/test/3mm/"
     num, psnr, ssim, mse, nmi= 0, 0, 0, 0, 0
     model.eval()
     T_1 = transforms.Compose([ transforms.ToTensor(),
@@ -190,8 +190,8 @@ def eval(model, epoch=0):
     T_2 = transforms.Compose([ transforms.ToTensor(),                         
                   transforms.Normalize((0.5), (0.5))])
     for i in tqdm(range(297)):
-        lr_path = os.path.join(lr, str(i)+"_3.png")
-        hr_path = os.path.join(hr, str(i)+"_6.png")
+        lr_path = os.path.join(lr, str(i)+"_6.png")
+        hr_path = os.path.join(hr, str(i)+"_3.png")
         if os.path.isfile(lr_path) and os.path.isfile(hr_path):
             lr_img = Image.open(lr_path).convert('L')
             hr_img = Image.open(hr_path).convert('L')
@@ -212,28 +212,7 @@ def eval(model, epoch=0):
             nmi += (skimage.metrics.normalized_mutual_information(yimg, gtimg))
             num += 1
     print(" PSNR: %.4f SSIM: %.4f MSE: %.4f NMI: %.4f"%(psnr/num, ssim/num, mse/num, nmi/num))
-    
-    i = random.randint(0, 296)
-    lr_path = os.path.join(lr, str(i)+"_3.png")
-    hr_path = os.path.join(hr, str(i)+"_6.png")
-    while not os.path.isfile(lr_path) or not os.path.isfile(hr_path):
-        i = random.randint(0, 296)
-        lr_path = os.path.join(lr, str(i)+"_3.png")
-        hr_path = os.path.join(hr, str(i)+"_6.png")
-    lr_img = Image.open(lr_path).convert('L')
-    hr_img = Image.open(hr_path).convert('L')
-    
-    lr_img = T_1(lr_img).cuda().unsqueeze(0)
-    hr_img = T_2(hr_img).cuda().unsqueeze(0)
-    
-    hf = high_pass(lr_img[0], i=10).unsqueeze(0).unsqueeze(0)
-    hf = (hf+lr_img)/2.0
-    lf = low_pass(lr_img[0], i=8).unsqueeze(0).unsqueeze(0)
-    _, _, sr_img = model(lf, hf)
-
-    save_sample(epoch, lr_img, "_eval_input")
-    save_sample(epoch, sr_img, "_eval_output")
-    
+        
 
 
 def eval_6m(model, dataset):

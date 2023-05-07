@@ -263,7 +263,6 @@ class NetworkA2B(nn.Module):
         lf_feature = self.shallow_frequency(lf) #64x128^2
         hf_feature_input = self.A2B_input(hf) #64x128^2
 
-
         hf_feature = self.skip(torch.cat([hf_feature_input, self.resnet(hf_feature_input)], 1)) #64*256^2
         # return None, None, feature_map
         return lf_feature, hf_feature, self.shallow_up(torch.cat([lf_feature, hf_feature], 1))
